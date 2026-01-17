@@ -1,0 +1,59 @@
+---
+title: "Analiza probabilistică a performanței unui serviciu online"
+author: "Mitrache Antonie Daniel"
+date: "Ianuarie 2026"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if(file.exists("R/01_trafic.R")) source("R/01_trafic.R")
+```
+
+# 1. Descrierea Problemei
+
+Scopul acestui proiect este modelarea unui sistem IT supus unui trafic aleator. Vom analiza relația dintre încărcarea sistemului (numărul de clienți), performanța tehnică (timpi de răspuns, erori) și impactul economic (profit vs pierderi).
+
+Proiectul simulează scenarii realiste precum: retry-uri automate, mecanisme de backoff și comportamentul utilizatorilor (churn).
+
+------------------------------------------------------------------------
+
+# 2. Modelarea Traficului Zilnic (Cerința 1)
+
+## Modelarea K_d folosind doua distributii discrete
+
+Pentru a modela numărul de vizitatori zilnici ($K_d$), am utilizat **Distribuția Poisson** si **Distributia Binomiala**, creand o functie care simuleaza traficul pe un numar de zile dat ca parametru, alaturi de distributia folosita si parametrii specifici acesteia:
+
+```{r}
+#' @param n_zile Numarul de zile pentru simulare
+#' @param metoda Tipul distributiei: "poisson" sau "binomial"
+#' @param lambda Media estimata a clientilor (pentru Poisson)
+#' @param n_max Capacitatea maxima teoretica (pentru Binomial)
+#' @param p Probabilitatea ca un potential client sa fie activ (pentru Binomial)
+simuleaza_trafic <- function(n_zile, metoda = "poisson", lambda = 1000, n_max = 2000, p = 0.5) {
+  
+  trafic <- numeric(n_zile)
+
+  if (metoda == "poisson") {
+    trafic <- rpois(n = n_zile, lambda = lambda)
+  } else if (metoda == "binomial") {
+    trafic <- rbinom(n = n_zile, size = n_max, prob = p)
+  } else {
+    stop("Metoda necunoscuta! Alege 'poisson' sau 'binomial'.")
+  }
+  
+  return(trafic)
+}
+```
+
+## Generarea unor esantioane care sa reprezinte traficul zilnic pe cativa ani si reprezentarea histogramelor
+
+```{r}
+zile <- 365 * 3
+
+trafic_poisson <- simuleaza_trafic(zile, metoda="poisson", lambda=1000)
+
+trafic_binomial <- simuleaza_trafic(zile, "binomial", n_max=2000, p=0.5)
+```

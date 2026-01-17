@@ -1,0 +1,18 @@
+# Istoric si Sesiune R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Fisiere generate de R Markdown
+*.pdf
+*.html
+*.docx
+
+# Fisiere temporare de la compilarea LaTeX
+*.tex
+*.log
+*.aux
+*.out
+*_cache/
+*_files/
