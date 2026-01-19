@@ -200,7 +200,7 @@ Aceste functii ne ajuta la compararea traficului din orice luna cu traficul din 
 
 Sa generam prin simulare un esantion de 3 ani (3 \* 365 zile).
 
-Vom considera urmatori parametrii pentru distributii: lambda = 1000 n = 2000 p = 0.5
+Vom considera urmatori parametrii pentru distributii: $\lambda$ = 1000 n = 2000 p = 0.5
 
 ```{r}
 trafic_3_ani <- df_trafic_zile(n_zile = 3 * 365)
@@ -439,3 +439,194 @@ comparatie_densitati_suprapuse(trafic_3_ani)
 * **Scenariul Poisson** este mai riscant. Deoarece traficul nu este plafonat de un număr finit de utilizatori ($N_{max}$), pot apărea "vârfuri" neașteptate care să suprasolicite serverele.
 
 * **Scenariul Binomial** este mai predictibil. Existența unui bazin finit de clienți ($N_{max}=2000$) acționează ca un amortizor natural al fluctuațiilor. Este un model specific aplicațiilor interne (corporate) sau pe bază de abonament limitat, unde dimensionarea serverelor este mai simplă și mai eficientă economic.
+
+# 3. Modelarea timpilor de raspuns (Cerinta 2)
+
+## a) Modelarea S folosind o distributie asimetrica si una simetrica
+
+Pentru a modela timpul de procesare $S$ (latenta), am utilizat 2 ipoteze:
+
+1.  **Distribuție Exponențială:** Presupune că majoritatea cererilor sunt rapide, dar există câteva foarte lente ("coadă lungă"). Este modelul clasic pentru servere (M/M/1).
+2.  **Distribuție Normală:** Presupune că timpii sunt simetrici în jurul unei medii, tipic pentru procese deterministe cu mici variații.
+
+```{r}
+#' Simuleaza timpii de raspuns (S)
+#' @param n Numarul de cereri (esantionul)
+#' @param tip Tipul distributiei: "exponentiala" sau "normala"
+#' @param medie Timpul mediu dorit (ex: 200 ms) atat pentru distributia exponentiala cat si cea normala
+#' @param sd Deviatia standard pentru distributia normala
+simuleaza_latente <- function(n, tip = "exponentiala", medie = 200, sd = 50) {
+  if (tip == "exponentiala") {
+    rate_param <- 1 / medie
+    valori <- rexp(n, rate = rate_param)
+  } else if (tip == "normala") {
+    valori <- rnorm(n, mean = medie, sd = sd)
+    
+    # Timpul nu poate fi negativ. Orice valoare < 1ms devine 1ms.
+    valori <- pmax(valori, 1)
+  } else {
+    stop("Tip distributie necunoscut! Alege 'exponentiala' sau 'normala'.")
+  }
+  
+  return(valori)
+}
+```
+
+## b) Construirea histogramelor pentru S si suprapunerea densitatilor teoretice
+
+Vom folosi urmatoarea rezolvare: 
+
+```{r}
+#' Vizualizeaza histograma si densitatea teoretica
+#' @param vector_latente Datele generate de functia simuleaza_latente
+#' @param tip "exponentiala" sau "normala"
+#' @param medie Media folosita la generare (pt curba teoretica)
+#' @param sd Deviatia standard (doar pt normala)
+vizualizeaza_latente <- function(vector_latente, tip = "exponentiala", medie = 200, sd = 50) {
+  # Desenam Histograma
+  if (tip == "exponentiala") {
+    titlu <- "Latente: Distributie Exponentiala (Asimetrică)"
+    culoare <- "wheat"
+  } else {
+    titlu <- "Latente: Distributie Normala (Simetrica)"
+    culoare <- "lightblue"
+  }
+  
+  hist(vector_latente, 
+       probability = TRUE, 
+       breaks = 30, 
+       col = culoare, 
+       border = "white",
+       main = titlu,
+       xlab = "Timp de Răspuns (ms)",
+       ylab = "Densitate")
+  
+  # Suprapunem densitatea teoretica (formula matematica)
+
+  if (tip == "exponentiala") {
+    # Functia de densitate exponentiala este dexp
+    curve(dexp(x, rate = 1/medie), 
+          col = "red", lwd = 3, add = TRUE)
+  } else {
+    # Functia de densitate normala este dnorm
+    curve(dnorm(x, mean = medie, sd = sd), 
+          col = "darkblue", lwd = 3, add = TRUE)
+  }
+}
+
+```
+
+
+Vom considera urmatorii parametrii pentru distributii:
+media = 200
+$\sigma$ = 50
+ 
+Vom simula latentele pentru 10000 de request-uri:
+```{r}
+latente_exp <- simuleaza_latente(10^4, tip="exponentiala")
+latente_norm <- simuleaza_latente(10^4, tip="normala")
+```
+
+Vizualizarea histogramei si a densitatii teoretice pentru modelul exponential:
+```{r}
+vizualizeaza_latente(latente_exp, "exponentiala")
+```
+
+Si pentru cel normal:
+```{r}
+vizualizeaza_latente(latente_norm, "normala")
+```
+
+## c) Calculul valorilor descriptive (Media, Varianta, Mediana, Modul) si interpretarea lor
+
+Vom folosi urmatoarea functie:
+
+```{r}
+#' Calculeaza statisticile descriptive (Media, Varianta, Mediana, Modul)
+#' si returneaza un tabel comparativ.
+#'
+#' @param v_exp Vectorul cu datele distributiei Exponentiale
+#' @param v_norm Vectorul cu datele distributiei Normale
+#' @return Un Data Frame cu statisticile rotunjite la 2 zecimale
+comparatie_statistica_latente <- function(v_exp, v_norm) {
+  
+  # Pentru variabile continue, Modul este varful curbei de densitate
+  calculeaza_modul <- function(v) {
+    d <- density(v)
+    return(d$x[which.max(d$y)])
+  }
+  
+  # Calculam statisticile pentru exponentiala
+  stats_exp <- c(
+    Media    = mean(v_exp),
+    Varianta = var(v_exp),
+    Mediana  = median(v_exp),
+    Modul    = calculeaza_modul(v_exp)
+  )
+  
+  # Calculam statisticile pentru normala
+  stats_norm <- c(
+    Media    = mean(v_norm),
+    Varianta = var(v_norm),
+    Mediana  = median(v_norm),
+    Modul    = calculeaza_modul(v_norm)
+  )
+  
+  # Construim Data Frame-ul final
+  df_stat <- data.frame(
+    Distributia = c("Exponentiala", "Normala"),
+    Media    = c(stats_exp["Media"],    stats_norm["Media"]),
+    Varianta = c(stats_exp["Varianta"], stats_norm["Varianta"]),
+    Mediana  = c(stats_exp["Mediana"],  stats_norm["Mediana"]),
+    Modul    = c(stats_exp["Modul"],    stats_norm["Modul"])
+  )
+  
+  # Rotunjim valorile numerice pentru un aspect curat in tabel
+  # (Coloanele 2 pana la 5 sunt numerice)
+  df_stat[, 2:5] <- round(df_stat[, 2:5], 2)
+  
+  return(df_stat)
+}
+```
+
+Rezultat:
+
+```{r}
+comparatie_statistica_latente(latente_exp, latente_norm)
+```
+
+Pe baza tabelului de mai sus, putem trage următoarele concluzii despre natura celor două distribuții:
+
+
+**1. Distribuția Normală (Modelul Simetric)**
+
+* **Centralitate:** Valorile pentru **Medie** ($\approx 199$), **Mediană** ($\approx 198$) și **Mod** ($\approx 190$) sunt foarte apropiate unele de altele. Această coincidență este specifică distribuțiilor simetrice (Clopotul lui Gauss), unde majoritatea datelor se aglomerează în jurul centrului.
+* **Varianța:** Valoarea obținută ($\approx 2434$) este consistentă cu deviația standard teoretică aleasă ($SD=50 \Rightarrow Var=2500$).
+* **Concluzie:** Acest model descrie un sistem **stabil și predictibil**, unde timpul de răspuns variază puțin și egal în ambele direcții față de medie.
+
+**2. Distribuția Exponențială (Modelul Asimetric)**
+
+* **Centralitate:** Observăm o discrepanță majoră între indicatori: $Mod < Mediană < Medie$ ($40 < 137 < 198$).
+    * **Modul scăzut ($\approx 40$):** Indică faptul că, cel mai frecvent, cererile sunt procesate foarte rapid (sub medie).
+    * **Mediana ($\approx 137$):** Arată că 50% dintre cereri sunt finalizate în sub 137ms.
+    * **Media ridicată ($\approx 198$):** Este trasă în sus de valorile extreme (coada distribuției).
+* **Varianța:** Este foarte mare ($\approx 38.791$), mult superioară celei normale.
+* **Concluzie:** Acest model descrie un sistem **realist, dar instabil**, caracterizat de o "coadă lungă" (*Long Tail*). Deși majoritatea cererilor sunt rapide, există un risc semnificativ de latențe foarte mari care destabilizează media.
+
+## d) Diferenta dintre medie si mediana in contextul latentelor
+
+Analizând tabelul statistic generat anterior, observăm o distincție clară între cele două modele:
+
+
+**1. Cazul Distribuției Normale (Procese Stabile)**
+
+* **Observație:** Media ($\approx 199$ ms) este aproape identică cu Mediana ($\approx 198$ ms).
+* **Interpretare:** Într-un sistem stabil, timpul mediu de răspuns reflectă corect experiența tipică a utilizatorului. 50% dintre cereri sunt mai rapide de 199ms, iar 50% sunt mai lente, distribuția fiind simetrică.
+
+**2. Cazul Distribuției Exponențiale (Sisteme Realiste / Queuing)**
+
+* **Observație:** Există o diferență majoră între Medie ($\approx 198$ ms) și Mediană ($\approx 137$ ms). Media este cu aproximativ **45% mai mare** decât mediana.
+* **Interpretare:** Aceasta este proprietatea de **"Long Tail"** (Coadă Lungă).
+    * **Mediana (137 ms):** Ne spune că *majoritatea* utilizatorilor (50%+) au o experiență foarte bună, primind răspuns rapid.
+    * **Media (198 ms):** Este trasă în sus de câteva cereri "ghinioniste" care durează foarte mult (outlieri).
+* **Concluzie de Business:** Pentru un server web, **Mediana** este un indicator mai bun al satisfacției generale ("utilizatorul obișnuit"), în timp ce **Media** ascunde faptul că mulți utilizatori au o experiență rapidă, dar este sensibilă la problemele grave de latență.
