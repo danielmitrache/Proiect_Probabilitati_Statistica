@@ -5,7 +5,7 @@ if(file.exists("R/01_trafic.R")) source("R/01_trafic.R")
 if(file.exists("R/03_evenimente.R")) source("R/03_evenimente.R")
 if(file.exists("R/10_churn.R")) source("R/10_churn.R")
 
-simuleaza_lot_zi <- function(n_simulari,
+simuleaza_lot_cereri <- function(n_simulari,
                              n_max = 3,
                              p_succes = 0.8,
                              t_0 = 500,
@@ -44,7 +44,7 @@ simuleaza_profit_zi <- function(nr_clienti,
                                 prag_erori_churn_cond = 5,
                                 prob_succes_churn_cond = 0.9) {
   
-  rezultate_zi <- simuleaza_lot_zi(nr_clienti)
+  rezultate_zi <- simuleaza_lot_cereri(nr_clienti)
   
   nr_succese <- sum(rezultate_zi$I == 1)
   
