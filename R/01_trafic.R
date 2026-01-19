@@ -16,7 +16,7 @@ simuleaza_trafic <- function(n_zile, metoda = "poisson", lambda = 1000, n_max = 
   } else if (metoda == "binomiala") {
     trafic <- rbinom(n = n_zile, size = n_max, prob = p)
   } else {
-    stop("Metoda necunoscuta! Alege 'poisson' sau 'binomial'.")
+    stop("Metoda necunoscuta! Alege 'poisson' sau 'binomiala'.")
   }
   
   return(trafic)
@@ -28,7 +28,7 @@ if (sys.nframe() == 0) {
   zile_total <- 365 * 3
   
   trafic_poisson <- simuleaza_trafic(zile_total, metoda="poisson", lambda=1000)
-  trafic_binomial <- simuleaza_trafic(zile_total, "binomial", n_max=2000, p=0.5)
+  trafic_binomial <- simuleaza_trafic(zile_total, metoda="binomiala", n_max=2000, p=0.5)
   
   data_start <- as.Date("2024-01-01")
   vector_date <- seq(from = data_start, by = "day", length.out = zile_total)

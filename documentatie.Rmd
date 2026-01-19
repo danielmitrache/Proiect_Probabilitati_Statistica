@@ -1,6 +1,10 @@
 ---
 title: "Analiza probabilistică a performanței unui serviciu online"
-author: "Mitrache Antonie Daniel"
+author: 
+  - "Mitrache Antonie Daniel"
+  - "Folea Alexandru"
+  - "Ene Andrei Tudor"
+  - "Smadu Andrei"
 date: "Ianuarie 2026"
 output:
   pdf_document:
