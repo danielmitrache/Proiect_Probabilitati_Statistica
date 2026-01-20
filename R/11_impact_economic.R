@@ -5,21 +5,43 @@ if(file.exists("R/01_trafic.R")) source("R/01_trafic.R")
 if(file.exists("R/03_evenimente.R")) source("R/03_evenimente.R")
 if(file.exists("R/10_churn.R")) source("R/10_churn.R")
 
-simuleaza_lot_cereri <- function(n_simulari,
-                             n_max = 3,
-                             p_succes = 0.8,
-                             t_0 = 500,
-                             medie_S = 150,
-                             backoff_fix = 50) {
+
+#' Aceasta functie apeleaza repetat functia simuleaza_o_cerere pentru a genera
+#' un esantion statistic de dimensiune n_simulari. Rezultatul este un tabel
+#' care permite analiza distributiei timpului total (T) si a ratei de succes.
+#'
+#' @param n_simulari Numarul total de cereri generate (ex: 1000, 10000).
+#' @param n_max Numarul maxim de incercari permise pentru o cerere (inclusiv prima incercare).
+#' @param p_succes Probabilitatea (0-1) ca o incercare individuala sa reuseasca.
+#' @param t_0 Timeout-ul initial (timpul limita de asteptare pentru primul raspuns).
+#' @param medie_S Latenta medie a serverului (pentru distributia exponentiala a timpului de procesare).
+#' @param backoff_fix Timpul fix adaugat la timeout (penalizare) in caz de esec (Backoff).
+#'
+#' @return Un `data.frame` cu `n_simulari` randuri si urmatoarele coloane:
+#' \itemize{
+#'   \item I: Indicator de succes final (1 daca a reusit, 0 altfel)
+#'   \item T: Timpul total pana la succes sau abandon (suma S_i si B_i)
+#'   \item N: Numarul total de incercari efectuate
+#'   \item D: Indicator logic (TRUE daca a existat cel putin un esec pe parcurs)
+#' }
+simuleaza_lot_cereri <- function(n_simulari, 
+                                 n_max = 3, 
+                                 p_succes = 0.8, 
+                                 t_0 = 500, 
+                                 medie_S = 150, 
+                                 backoff_fix = 50) {
   
-  rezultate <- replicate(n_simulari, simuleaza_o_cerere(n_max = n_max,
-                                                        p_succes = p_succes,
-                                                        t_0 = t_0,
-                                                        medie_S = medie_S,
+  # Folosim replicate pentru a rula simularea de n ori
+  rezultate <- replicate(n_simulari, simuleaza_o_cerere(n_max = n_max, 
+                                                        p_succes = p_succes, 
+                                                        t_0 = t_0, 
+                                                        medie_S = medie_S, 
                                                         backoff_fix = backoff_fix))
+  
+  # Transpunem matricea rezultat (sa avem cererile pe randuri) si o facem data frame
   df <- as.data.frame(t(rezultate))
   
-  # Convertim listele rezultate in vectori numerici/logici pentru calcule statistice
+  # Curatam listele (replicate poate returna liste, noi vrem vectori numerici)
   df[] <- lapply(df, unlist)
   
   return(df)
@@ -29,6 +51,7 @@ simuleaza_lot_cereri <- function(n_simulari,
 #' @param nr_clienti Numarul de clienti din acea zi (Kd)
 #' @param castig_per_succes Venitul generat de o cerere reusita
 #' @param cost_churn Pierderea generata de un client care pleaca
+#' @param limita_sla Timpul maxim acceptat (T_max) inainte de penalizare
 #' @param penalizare_sla Costul daca se depaseste timpul limita
 #' @param rata_churn_aleator Probabilitatea ca un utilizator sa paraseasca platforma aleator
 #' @param dim_churn_cond Dimensiunea ferestrei (numarul de cereri recente)
@@ -38,6 +61,7 @@ simuleaza_lot_cereri <- function(n_simulari,
 simuleaza_profit_zi <- function(nr_clienti, 
                                 castig_per_succes = 0.5, 
                                 cost_churn = 50, 
+                                limita_sla = 800,
                                 penalizare_sla = 2.0,
                                 rata_churn_aleator = 0.05,
                                 dim_churn_cond = 20,
@@ -48,7 +72,7 @@ simuleaza_profit_zi <- function(nr_clienti,
   
   nr_succese <- sum(rezultate_zi$I == 1)
   
-  nr_sla_fail <- sum(rezultate_zi$T > 800)
+  nr_sla_fail <- sum(rezultate_zi$T > limita_sla)
   
   
   # CHURN
@@ -101,7 +125,6 @@ calculeaza_statistici_profit <- function(vector_valori) {
   return(c(
     Media = media,
     Varianta = varianta,
-    Deviatie_Std = dev_std,
     IC_Min = limita_inf,
     IC_Max = limita_sup
   ))
@@ -167,19 +190,21 @@ simuleaza_scenariu_economic <- function(n_zile = 100,
     profituri[i] <- rezultat_zi["Profit"]
   }
   
-  # 4. Calculam si returnam statisticile
-  statistici <- calculeaza_statistici_profit(profituri)
-  return(statistici)
+  # 4. Returnam profiturile
+  return(profituri)
 }
 
 
 
-#' Genereaza date pentru analiza de senzitivitate
+#' Genereaza date pentru analiza compromisurilor tehnico-economice
 #' @param start Rata de succes de start
 #' @param end Rata de succes de final
 #' @param step Pasul de incrementare
 #' @param ... Orice alti parametri transmisi catre simuleaza_scenariu_economic 
 #'            (ex: n_zile, castig_per_succes, etc.)
+#'            
+#' @return Un data.frame cu doua coloane: Rata_Succes si Profit_Mediu, util pentru
+#'         analize ulterioare sau tabele. Functia genereaza si un grafic (side-effect).
 genereaza_date_senzitivitate <- function(start = 0.85, end = 0.99, step = 0.01, ...) {
   
   # Generam secventa de rate de succes
@@ -191,10 +216,31 @@ genereaza_date_senzitivitate <- function(start = 0.85, end = 0.99, step = 0.01, 
     p <- rate_succes[i]
     
     # suprascriem prob_succes_churn_cond cu valoarea curenta 'p'
-    stats <- simuleaza_scenariu_economic(..., prob_succes_churn_cond = p)
+    stats <- calculeaza_statistici_profit(
+      simuleaza_scenariu_economic(..., prob_succes_churn_cond = p)
+    )
     
+
     profituri_medii[i] <- stats["Media"]
   }
+  
+  y_min <- min(profituri_medii, na.rm = TRUE)
+  y_max <- max(profituri_medii, na.rm = TRUE)
+  
+  # Desenam Graficul (Profit vs Rata Succes)
+  plot(rate_succes * 100, profituri_medii, 
+       type = "b",        # b = both (linii si puncte)
+       pch = 19,          # puncte pline
+       ylim = c(y_min, y_max),
+       col = "blue",      # culoare albastra
+       lwd = 2,           # grosime linie
+       main = "Senzitivitate: Cum influențează calitatea tehnică profitul?",
+       xlab = "Rata de Succes a Sistemului (%)",
+       ylab = "Profit Mediu Zilnic (EUR)")
+  
+  # Adaugam linia de faliment (Zero)
+  abline(h = 0, col = "red", lty = 2, lwd = 2)
+  grid()
   
   return(data.frame(
     Rata_Succes = rate_succes,
@@ -207,15 +253,16 @@ if(sys.nframe() == 0) {
   # B. Testare si Estimare
   
   # Rulam simularea pe 100 de zile pentru test
-  statistici <- simuleaza_scenariu_economic(
-    n_zile = 100, 
-    rata_churn_aleator = 0.001, # 0.1% churn
-    cost_churn = 20,
-    castig_per_succes = 2
-  ) 
+  statistici <- calculeaza_statistici_profit(
+      simuleaza_scenariu_economic(
+      n_zile = 100, 
+      rata_churn_aleator = 0.001, # 0.1% churn
+      cost_churn = 20,
+      castig_per_succes = 2
+    ) 
+  )
   
   cat("\n--- Rezultate Finale ---\n")
-  # Corectat 'statstici' -> 'statistici'
   cat("Media Profitului:   ", round(statistici["Media"], 2), "EUR\n")
   cat("Varianta Profitului:", round(statistici["Varianta"], 2), "\n")
   cat("Interval Incredere: [", round(statistici["IC_Min"], 2), ",", round(statistici["IC_Max"], 2), "]\n")

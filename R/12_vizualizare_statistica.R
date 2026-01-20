@@ -34,10 +34,11 @@ plot_histograme_12a <- function(vector_timp, vector_profit) {
 }
 
 #' Deseneaza Boxplot-uri comparative (Cerinta 12b)
-#' @param df_cereri
-#' @param df_scenariu_1
-#' @param df_scenariu_2
-#' @return Nimic, doar desebeaza boxplot-uri
+#' @param df_cereri Dataframe-ul principal pentru analiza Succes/Esec. Trebuie sa contina 
+#'                  coloanele T (Timp total) si I (Indicator succes: 0 sau 1).
+#' @param df_scenariu_1 Dataframe cu rezultatele primului scenariu
+#' @param df_scenariu_2 Dataframe cu rezultatele celui de-al doilea scenariu
+#' @return Nimic, doar deseneaza boxplot-uri
 plot_boxplots_12b <- function(df_cereri, df_scenariu_1, df_scenariu_2) {
   
   # Layout: 1 rand, 2 coloane
@@ -53,7 +54,7 @@ plot_boxplots_12b <- function(df_cereri, df_scenariu_1, df_scenariu_2) {
           ylab = "Timp Total (ms)",
           xlab = "Rezultat Final")
   
-  # 2. Boxplot Comparatie Scenarii (ex: Backoff Mic vs Backoff Mare)
+  # 2. Boxplot Comparatie Scenarii
   # Cream o lista pentru boxplot
   boxplot(df_scenariu_1$T, df_scenariu_2$T,
           names = c("Scenariu A", "Scenariu B"),

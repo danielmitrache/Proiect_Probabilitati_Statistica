@@ -1,0 +1,487 @@
+```{r}
+set.seed(8421)
+if(file.exists("R/01_trafic.R")) source("R/01_trafic.R")
+if(file.exists("R/03_evenimente.R")) source("R/03_evenimente.R")
+if(file.exists("R/10_churn.R")) source("R/10_churn.R")
+if(file.exists("R/11_impact_economic.R")) source("R/11_impact_economic.R")
+```
+
+
+# 12. Impact Economic (Cerința 11)
+
+Scopul final al analizei este cuantificarea performanței tehnice în termeni financiari.
+
+## a) Definirea variabilei aleatoare pentru profitul zilnic
+
+Definim variabila aleatoare $Profit_{zi}$ ca fiind bilanțul financiar net la finalul unei zile de activitate. Aceasta se exprimă ca o funcție liniară de alte variabile aleatoare simulate anterior:
+
+$$Profit_{zi} = V_{succes} - C_{churn} - C_{SLA}$$
+
+Unde componentele sunt definite astfel:
+
+1.  **Venituri ($V_{succes}$):**
+    $$V_{succes} = N_{succes} \cdot c_{succes}$$
+    * $N_{succes}$: Variabilă aleatoare reprezentând numărul total de cereri soluționate cu succes în ziua respectivă ($I=1$).
+    * $c_{succes}$: Câștigul unitar per tranzacție reușită (ex: 2.0 EUR).
+
+2.  **Pierderi din Churn ($C_{churn}$):**
+    $$C_{churn} = N_{churn} \cdot c_{pierdere}$$
+    * $N_{churn}$: Variabilă aleatoare reprezentând numărul de utilizatori care părăsesc platforma în ziua respectivă (fie aleator, fie condiționat de erori).
+    * $c_{pierdere}$: Costul asociat pierderii unui client (LTV - Lifetime Value, ex: 20 EUR).
+
+3.  **Penalități SLA ($C_{SLA}$):**
+    $$C_{SLA} = N_{SLA} \cdot c_{penalizare}$$
+    * $N_{SLA}$: Variabilă aleatoare reprezentând numărul de cereri care au depășit timpul limită contractual $T > t_{SLA}$ (ex: 800ms).
+    * $c_{penalizare}$: Costul penalizării per încălcare a SLA (ex: 2.0 EUR).
+
+Deoarece $N_{succes}$, $N_{churn}$ și $N_{SLA}$ sunt variabile aleatoare (depind de distribuțiile de trafic, latență și mecanismele de retry), rezultă că și $Profit_{zi}$ este o variabilă aleatoare cu propria sa medie și varianță.
+
+
+Pentru implementarea acestei variabile aleatoare in R, vom folosi atat de functia de simularea unei cereri de la exercitiul 3, cat si de functia de simulare a churn-ului de la exercitiul 10. 
+
+Mai intai vom defini urmatoarea functie care simuleaza un lot de cereri:
+```{r}
+#' Aceasta functie apeleaza repetat functia simuleaza_o_cerere pentru a genera
+#' un esantion statistic de dimensiune n_simulari. Rezultatul este un tabel
+#' care permite analiza distributiei timpului total (T) si a ratei de succes.
+#'
+#' @param n_simulari Numarul total de cereri generate (ex: 1000, 10000).
+#' @param n_max Numarul maxim de incercari permise pentru o cerere (inclusiv prima incercare).
+#' @param p_succes Probabilitatea (0-1) ca o incercare individuala sa reuseasca.
+#' @param t_0 Timeout-ul initial (timpul limita de asteptare pentru primul raspuns).
+#' @param medie_S Latenta medie a serverului (pentru distributia exponentiala a timpului de procesare).
+#' @param backoff_fix Timpul fix adaugat la timeout (penalizare) in caz de esec (Backoff).
+#'
+#' @return Un `data.frame` cu `n_simulari` randuri si urmatoarele coloane:
+#' \itemize{
+#'   \item I: Indicator de succes final (1 daca a reusit, 0 altfel)
+#'   \item T: Timpul total pana la succes sau abandon (suma S_i si B_i)
+#'   \item N: Numarul total de incercari efectuate
+#'   \item D: Indicator logic (TRUE daca a existat cel putin un esec pe parcurs)
+#' }
+simuleaza_lot_cereri <- function(n_simulari, 
+                                 n_max = 3, 
+                                 p_succes = 0.8, 
+                                 t_0 = 500, 
+                                 medie_S = 150, 
+                                 backoff_fix = 50) {
+  
+  # Folosim replicate pentru a rula simularea de n ori
+  rezultate <- replicate(n_simulari, simuleaza_o_cerere(n_max = n_max, 
+                                                        p_succes = p_succes, 
+                                                        t_0 = t_0, 
+                                                        medie_S = medie_S, 
+                                                        backoff_fix = backoff_fix))
+  
+  # Transpunem matricea rezultat (sa avem cererile pe randuri) si o facem data frame
+  df <- as.data.frame(t(rezultate))
+  
+  # Curatam listele (replicate poate returna liste, noi vrem vectori numerici)
+  df[] <- lapply(df, unlist)
+  
+  return(df)
+}
+```
+
+
+Vom defini variabila aleatoare astfel:
+```{r}
+#' Calculeaza bilantul economic pentru o zi de activitate
+#' @param nr_clienti Numarul de clienti din acea zi (Kd)
+#' @param castig_per_succes Venitul generat de o cerere reusita
+#' @param cost_churn Pierderea generata de un client care pleaca
+#' @param limita_sla Timpul maxim acceptat (T_max) inainte de penalizare
+#' @param penalizare_sla Costul daca se depaseste timpul limita
+#' @param rata_churn_aleator Probabilitatea ca un utilizator sa paraseasca platforma aleator
+#' @param dim_churn_cond Dimensiunea ferestrei (numarul de cereri recente)
+#' @param prag_erori_churn_cond Pragul de erori (minim k esecuri declanseaza plecarea)
+#' @param prob_succes_churn_cond Probabilitatea de succes a unei singure cereri
+#' @return Un vector numit cu indicatorii economici: Profit, Venit, Costuri si Numarul de utilizatori pierduti.
+simuleaza_profit_zi <- function(nr_clienti, 
+                                castig_per_succes = 0.5, 
+                                cost_churn = 50, 
+                                limita_sla = 800,
+                                penalizare_sla = 2.0,
+                                rata_churn_aleator = 0.05,
+                                dim_churn_cond = 20,
+                                prag_erori_churn_cond = 5,
+                                prob_succes_churn_cond = 0.9) {
+  
+  rezultate_zi <- simuleaza_lot_cereri(nr_clienti)
+  
+  nr_succese <- sum(rezultate_zi$I == 1)
+  
+  nr_sla_fail <- sum(rezultate_zi$T > limita_sla)
+  
+  
+  # CHURN
+  plecari_aleatoare <- replicate(nr_clienti, simuleaza_churn_aleator(q = rata_churn_aleator))
+
+  plecari_conditionate <- replicate(nr_clienti, simuleaza_churn_conditionat(m = dim_churn_cond,
+                                                                            k = prag_erori_churn_cond,
+                                                                            p_succes = prob_succes_churn_cond))
+  plecari_totale <- plecari_aleatoare | plecari_conditionate
+  
+  nr_churn = sum(plecari_totale)
+  
+  
+  # PARTEA FINANCIARA
+  venit_total <- nr_succese * castig_per_succes
+  cost_penalizari <- nr_sla_fail * penalizare_sla
+  pierdere_churn <- nr_churn * cost_churn
+  
+  profit_net <- venit_total - pierdere_churn - cost_penalizari
+  
+  return(c(
+    Profit = profit_net,
+    Venit = venit_total,
+    Cost_SLA = cost_penalizari,
+    Cost_Churn = pierdere_churn,
+    Nr_Churn = nr_churn
+  ))
+}
+```
+
+## b) Estimarea statistică a profitului (Medie, Varianță, Interval de Încredere)
+
+Deoarece profitul zilnic este o variabilă aleatoare, o singură simulare nu este relevantă pentru deciziile de business. Pentru a obține o estimare robustă, folosim metoda **Monte Carlo** simulând activitatea pe o perioadă extinsă (un an calendaristic).
+
+### Metodologia de Estimare
+
+1.  **Simulare Repetată:** Generăm $N$ de zile independente. Pentru fiecare zi:
+    * Se generează traficul $K_d$ (conform distribuției Poisson/Binomiale din cap. 1).
+    * Se simulează comportamentul fiecărui client și răspunsul sistemului.
+    * Se calculează profitul net al zilei respective.
+2.  **Agregare:** Obținem un vector de profituri $P = [p_1, p_2, ..., p_{N}]$.
+3.  **Calcul Statistic:**
+    * **Media Empirică ($\bar{P}$):** Speranța matematică a profitului.
+    * **Varianța ($s^2$):** Măsura riscului/volatilității afacerii.
+    * **Intervalul de Încredere (95%):** Calculat pe baza Teoremei Limită Centrală (pentru $n$ mare):
+        $$IC_{95\%} = \left[ \bar{P} - 1.96 \frac{s}{\sqrt{n}}, \quad \bar{P} + 1.96 \frac{s}{\sqrt{n}} \right]$$
+
+Vom folosi urmatoarea functie:
+
+```{r}
+#' Simuleaza un scenariu economic complet pe o perioada data
+#' Aceasta functie impacheteaza tot procesul: Trafic -> Simulare Zi -> Statistici
+#' 
+#' @param n_zile Durata simularii (zile)
+#' @param model_trafic Tipul distributiei traficului: "poisson" sau "binomiala"
+#' @param lambda_trafic_pois Media clientilor pe zi (pentru Poisson)
+#' @param nmax_trafic_bin Capacitatea maxima teoretica (pentru Binomial)
+#' @param p_trafic_bin Probabilitatea ca un potential client sa fie activ (pentru Binomial)
+#' 
+#' @param castig_per_succes Venit per succes
+#' @param cost_churn Pierdere per client plecat
+#' @param cost_sla Penalizare SLA
+#' @param rata_churn Rata de churn aleator
+#' 
+#' @param rata_churn_aleator Probabilitatea ca un utilizator sa paraseasca platforma aleator
+#' @param dim_churn_cond Dimensiunea ferestrei (numarul de cereri recente)
+#' @param prag_erori_churn_cond Pragul de erori (minim k esecuri declanseaza plecarea)
+#' @param prob_succes_churn_cond Probabilitatea de succes a unei singure cereri
+#' 
+#' @return Vectorul cu statistici (Media, Varianta, IC)
+simuleaza_scenariu_economic <- function(n_zile = 100,
+                                        model_trafic = "poisson",
+                                        lambda_trafic = 1000,
+                                        nmax_trafic_bin = 2000,
+                                        p_trafic_bin = 0.5,
+                                        castig_per_succes = 0.6,
+                                        cost_churn = 50,
+                                        cost_sla = 2.0,
+                                        rata_churn_aleator = 0.05,
+                                        dim_churn_cond = 20,
+                                        prag_erori_churn_cond = 5,
+                                        prob_succes_churn_cond = 0.9) {
+  
+  # 1. Generam Traficul (folosim functia din Ex 1)
+  trafic_zilnic <- simuleaza_trafic(n_zile,
+                                    metoda = model_trafic,
+                                    lambda = lambda_trafic,
+                                    n_max = nmax_trafic_bin,
+                                    p = p_trafic_bin)
+  
+  # 2. Alocam spatiu pentru rezultate
+  profituri <- numeric(n_zile)
+  
+  # 3. Rulam simularea zi de zi
+  for(i in 1:n_zile) {
+    # Apelam functia de zi pe care am facut-o anterior
+    rezultat_zi <- simuleaza_profit_zi(nr_clienti = trafic_zilnic[i],
+                                       castig_per_succes = castig_per_succes,
+                                       cost_churn = cost_churn,
+                                       penalizare_sla = cost_sla,
+                                       rata_churn_aleator = rata_churn_aleator,
+                                       dim_churn_cond = dim_churn_cond, 
+                                       prag_erori_churn_cond = prag_erori_churn_cond,
+                                       prob_succes_churn_cond = prob_succes_churn_cond)
+    
+    profituri[i] <- rezultat_zi["Profit"]
+  }
+  
+  # 4. Returnam profiturile
+  return(profituri)
+}
+```
+
+### Rezultatele Simulării
+
+Rulăm scenariul pentru aproximativ 5 ani de activitate ($n=5 * 365$ zile), considerând un trafic mediu $\lambda=1000$ clienți/zi și urmatorii parametrii economici: <br/>
+castig_per_succes = 2 EUR <br/>
+cost_churn = 40 EUR <br/>
+cost_sla = 0.5 EUR <br/>
+
+```{r estimare_profit_b}
+profituri <- simuleaza_scenariu_economic(
+  n_zile = 365,
+  model_trafic = "poisson",
+  lambda_trafic = 1000,
+  # Parametri economici
+  castig_per_succes = 2.0,
+  cost_churn = 40,
+  cost_sla = 0.5,
+  rata_churn_aleator = 0.001
+)
+
+
+head(profituri)
+```
+
+Acum ne putem calcula media, varianta si intervalele de incredere folosind urmatoarea functie:
+
+```{r}
+#' Calculeaza statistici descriptive si interval de incredere
+#' @param vector_valori Un vector numeric (ex: profiturile zilnice)
+#' @return Un vector cu Media, Varianta si limitele Intervalului de Incredere 95%
+calculeaza_statistici_profit <- function(vector_valori) {
+  
+  # 1. Calcule de baza
+  media <- mean(vector_valori)
+  varianta <- var(vector_valori)
+  dev_std <- sd(vector_valori)
+  n <- length(vector_valori)
+
+  # 2. Calcul Interval de Incredere 95%
+  # Formula: Media +/- 1.96 * (SD / sqrt(n))
+  eroare_std <- dev_std / sqrt(n)
+  limita_inf <- media - 1.96 * eroare_std
+  limita_sup <- media + 1.96 * eroare_std
+  
+  # 3. Returnam totul impachetat frumos
+  return(c(
+    Media = media,
+    Varianta = varianta,
+    IC_Min = limita_inf,
+    IC_Max = limita_sup
+  ))
+}
+```
+
+Folosind valorile pentru profituri generate anterior, putem construi un tabel pentru a vedea media, varianta si intervalele de incredere:
+
+```{r}
+statistici <- calculeaza_statistici_profit(profituri)
+
+knitr::kable(t(statistici), 
+             digits = 2,
+             caption = "Rezultate Economice")
+```
+
+
+
+## c) Analiza compromisurilor tehnico-economice
+
+În ingineria sistemelor, există întotdeauna un compromis între costul de a menține o calitate tehnică ridicată (ex: servere scumpe, redundanță) și pierderile cauzate de clienții nemulțumiți.
+
+Vom folosi o **Analiză de Senzitivitate** pentru a răspunde la întrebarea:
+> *"Care este rata minimă de succes tehnic pe care trebuie să o menținem pentru ca afacerea să fie profitabilă?"*
+
+Vom varia rata de succes a cererilor (`prob_succes_churn_cond`) de la 85% la 99% și vom observa evoluția profitului mediu.
+
+```{r analiza_senzitivitate, fig.width=8, fig.height=6}
+date_grafic <- genereaza_date_senzitivitate(
+  start = 0.85, 
+  end = 0.99, 
+  step = 0.01,
+  
+  # Parametrii fixi (transmisi prin ...):
+  n_zile = 100,
+  lambda_trafic = 1000,
+  castig_per_succes = 2.0,
+  cost_churn = 40,
+  cost_sla = 2.0,
+  rata_churn_aleator = 0.001    # Churn natural mic (0.1%), ca sa izolam efectul tehnic
+)
+```
+
+
+Graficul generat evidențiază o relație neliniară dramatică între calitatea tehnică și succesul economic. Putem distinge trei zone critice:
+
+1.  **Zona de Faliment (Rata de Succes < 90%)**
+    * Observăm că linia albastră se află sub pragul roșu de rentabilitate ($Profit < 0$).
+    * **Cauza:** Costul pierderii clienților (`Cost Churn` = 40 EUR) este mult mai mare decât câștigul marginal dintr-o tranzacție reușită (2 EUR).
+    * **Impact:** Chiar și o rată de succes aparent decentă de 86% generează pierderi masive (aprox. -3000 EUR/zi), deoarece numărul de clienți nemulțumiți care părăsesc platforma este suficient de mare pentru a anula toate veniturile.
+
+2.  **Punctul Critic (Break-even Point $\approx$ 90%)**
+    * Graficul ne arată că **pragul minim de supraviețuire** al afacerii este o rată de succes tehnic de **90%**.
+    * În acest punct, veniturile din tranzacțiile reușite abia reușesc să acopere costurile operaționale și pierderile cauzate de churn.
+
+3.  **Zona de Profit și Saturare (Rata de Succes > 92%)**
+    * Odată depășit pragul critic, profitul crește abrupt, ajungând rapid la valori pozitive (ex: 1000-2000 EUR).
+    * **Randamente descrescătoare:** Se observă că diferența de profit între 96% și 99% este mult mai mică decât diferența între 88% și 91%. Curba se aplatizează ("saturare"), ceea ce înseamnă că, după un anumit nivel de calitate, investițiile suplimentare aduc beneficii economice marginale mai mici.
+ 
+    
+# 13. Vizualizare statistica (Cerinta 12)
+
+## a) Histograme pentru T si profit
+
+Pentru a realiza aceste doua histograme vom defini o functie care accepta ca parametrii 2 vectori: unul cu timpii pana la succes/abandon in ms, iar celalt cu profituri.
+
+```{r}
+#' Deseneaza Histogramele pentru Timp si Profit (Cerinta 12a)
+#' @param vector_timp
+#' @param vector_profit
+#' @return Nimic, doar deseneaza histogramele
+plot_histograme_12a <- function(vector_timp, vector_profit) {
+  # Impartim ecranul in 2 (stanga/dreapta)
+  par(mfrow = c(1, 2))
+  
+  # 1. Histograma Timpului (T)
+  hist(vector_timp, 
+       col = "lightblue", 
+       border = "white", 
+       main = "Distributia Timpului Total (T)",
+       xlab = "Timp (ms)", 
+       ylab = "Frecventa",
+       probability = TRUE)
+
+  # 2. Histograma Profitului
+  hist(vector_profit, 
+       col = "lightgreen", 
+       border = "white",
+       main = "Distributia Profitului Zilnic",
+       xlab = "Profit (EUR)",
+       ylab = "Frecventa")
+
+  # Resetam layout-ul
+  par(mfrow = c(1, 1))
+}
+```
+
+Generam datele:
+
+```{r}
+df_cereri_viz <- simuleaza_lot_cereri(n_simulari = 5000, 
+                                      n_max = 3, 
+                                      p_succes = 0.8, 
+                                      medie_S = 150)
+  
+vector_profit_viz <- replicate(5000, {
+  # Generam o zi cu trafic mediu (1000 clienti)
+  rez <- simuleaza_profit_zi(nr_clienti = 1000, 
+                             castig_per_succes = 2.0, 
+                             cost_churn = 20, 
+                             rata_churn_aleator = 0.001)
+  return(rez["Profit"])
+})
+```
+
+Si vizualizam histogramele folosind functia:
+
+```{r}
+plot_histograme_12a(vector_timp = df_cereri_viz$T, vector_profit = vector_profit_viz)
+```
+
+
+## b) Boxplot-uri pentru T conditionat de succes/esec si pentru scenarii diferite
+
+Pentru a reprezenta boxplot-urile vom folosi urmatoarea functie:
+
+```{r}
+#' Deseneaza Boxplot-uri comparative (Cerinta 12b)
+#' @param df_cereri Dataframe-ul principal pentru analiza Succes/Esec. Trebuie sa contina 
+#'                  coloanele T (Timp total) si I (Indicator succes: 0 sau 1).
+#' @param df_scenariu_1 Dataframe cu rezultatele primului scenariu
+#' @param df_scenariu_2 Dataframe cu rezultatele celui de-al doilea scenariu
+#' @return Nimic, doar deseneaza boxplot-uri
+plot_boxplots_12b <- function(df_cereri, df_scenariu_1, df_scenariu_2) {
+  
+  # Layout: 1 rand, 2 coloane
+  par(mfrow = c(1, 2))
+  
+  # 1. Boxplot Conditionat: Succes vs Esec
+  # Transformam 0/1 in etichete text
+  etichete <- factor(df_cereri$I, levels = c(0, 1), labels = c("Esec", "Succes"))
+  
+  boxplot(df_cereri$T ~ etichete,
+          col = c("salmon", "lightgreen"),
+          main = "Timp (T) conditionat de Rezultat",
+          ylab = "Timp Total (ms)",
+          xlab = "Rezultat Final")
+  
+  # 2. Boxplot Comparatie Scenarii
+  # Cream o lista pentru boxplot
+  boxplot(df_scenariu_1$T, df_scenariu_2$T,
+          names = c("Scenariu A", "Scenariu B"),
+          col = c("lightblue", "gold"),
+          main = "Comparatie Scenarii",
+          ylab = "Timp Total (ms)")
+  
+  par(mfrow = c(1, 1))
+}
+```
+
+
+Pentru a vizualiza impactul mecanismului de *Retry* asupra distribuției timpului de răspuns, am definit două scenarii arhitecturale distincte:
+
+1.  **Scenariul A (Standard / Robust):**
+    * Folosim `n_max = 3` (până la 3 încercări).
+    * **Filozofie:** Sistemul prioritizează livrarea cu succes a răspunsului, chiar dacă asta înseamnă că utilizatorul așteaptă mai mult în caz de erori temporare.
+2.  **Scenariul B (Fail-Fast):**
+    * Folosim `n_max = 1` (o singură încercare, fără retry).
+    * **Filozofie:** Sistemul prioritizează eliberarea rapidă a resurselor. Dacă apare o eroare, se raportează imediat, fără a ține clientul în așteptare ("Eșuează Rapid").
+
+Generăm datele și vizualizăm diferențele:
+
+```{r boxplot_scenarii, fig.width=10, fig.height=5}
+# 1. Generam datele pentru Scenariul A (Standard: 3 incercari)
+# Acesta va avea o dispersie mai mare a timpului din cauza reincercarilor
+df_standard <- simuleaza_lot_cereri(n_simulari = 5000, 
+                                    n_max = 3, 
+                                    p_succes = 0.8, 
+                                    medie_S = 150)
+
+# 2. Generam datele pentru Scenariul B (Fail-Fast: 1 incercare)
+# Schimbam parametrul n_max la 1 pentru a simula lipsa retry-urilor
+# Acesta ar trebui sa aiba o latenta mult mai predictibila (varianta mica)
+df_fail_fast <- simuleaza_lot_cereri(n_simulari = 5000, 
+                                     n_max = 1, 
+                                     p_succes = 0.8, 
+                                     medie_S = 150)
+
+# 3. Apelam functia de vizualizare definita la punctul anterior
+# Argumentul 1 (df_standard) este folosit pentru graficul din stanga (Succes vs Esec)
+# Argumentele 2 si 3 sunt folosite pentru comparatia directa (Standard vs Fail-Fast)
+plot_boxplots_12b(df_cereri = df_standard, 
+                  df_scenariu_1 = df_standard, 
+                  df_scenariu_2 = df_fail_fast)
+```
+
+
+## c) Interpretare: Mediană, IQR și Outlieri
+
+Analizăm distribuțiile vizualizate în graficul Boxplot pentru a extrage concluzii despre performanța sistemului.
+
+### 1. Analiza Medianei (Linia neagră orizontală)
+* **Succes vs. Eșec:** Observăm o discrepanță majoră. Mediana pentru cererile cu **Succes** este joasă (aprox. 150ms), indicând că sistemul funcționează rapid în condiții normale. În schimb, mediana pentru **Eșec** este ridicată (aprox. 500ms). Aceasta confirmă că "costul" unui eșec nu este doar eroarea în sine, ci și timpul pierdut în mecanismele de *Retry*.
+* **Scenariul A vs. B:** Scenariul *Fail-Fast* (B - Galben) are o mediană vizibil mai mică decât Scenariul Standard (A - Albastru), deoarece elimină timpul de așteptare pentru reîncercări inutile.
+
+### 2. Analiza IQR (Înălțimea cutiei colorate)
+* **Definiție:** Intervalul Interquartilic (IQR) măsoară dispersia statistică (unde se află 50% dintre datele centrale).
+* **Interpretare:** Cutia roșie (Eșec) este mult mai înaltă decât cea verde (Succes). Acest lucru indică o **instabilitate mare** a timpului de răspuns în caz de erori – unii utilizatori așteaptă puțin până la eroare, alții așteaptă foarte mult (în funcție de momentul exact când serverul respinge conexiunea).
+* **Predictibilitate:** Scenariul B (Galben) are un IQR mai mic (cutie mai îngustă) decât A, ceea ce îl face un sistem mai predictibil (Latență Deterministică).
+
+### 3. Analiza Outlierilor (Punctele izolate)
+* **Observație:** În graficul din dreapta, Scenariul A (Albastru) prezintă o "coadă" lungă de puncte deasupra mustăților, ajungând până la 1500ms+.
+* **Semnificație:** Acești outlieri reprezintă **cazurile patologice** (Worst Case Execution Time). Deși rari, acești utilizatori au suferit latențe inacceptabile. Scenariul B reduce drastic numărul și magnitudinea acestor valori extreme, tăind "coada" distribuției.
