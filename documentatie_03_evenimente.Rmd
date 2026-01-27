@@ -1,0 +1,78 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("R/03_evenimente.R")
+```
+
+# 3. Evenimente și Probabilități (Cerința 3)
+
+În această secțiune, analizăm comportamentul probabilistic al unei singure cereri care trece prin mecanismul de retry. Definim următoarele evenimente cheie:
+\begin{itemize}
+    \item **A (Succes):** Cererea este procesată cu succes înainte de a epuiza numărul maxim de încercări.
+    \item **B (SLA):** Cererea este finalizată într-un timp total $T \le 400$ ms.
+    \item **C (Eficiență):** Cererea reușește din primele $n_0 = 2$ încercări.
+    \item **D (Eșec Parțial):** Cererea întâmpină cel puțin un eșec pe parcurs, deși poate reuși la final.
+\end{itemize}
+
+## Implementarea Simulării
+
+Funcția `simuleaza_o_cerere` modelează întregul ciclu de viață al unei cereri:
+
+```{r}
+#' Simuleaza o singura cerere care poate avea mai multe retry-uri
+#' 
+#' @param n_max Numarul maxim de incercari permise (retry-uri + prima incercare)
+#' @param p_succes Probabilitatea de succes a unei singure incercari (U_i)
+#' @param t_0 Pragul de timp pentru respectarea SLA (Service Level Agreement)
+#' @param medie_S Timpul mediu de procesare pentru o singura incercare (S_i)
+#' @param backoff_fix Timpul de asteptare fix adaugat intre doua reincercari (B_i)
+#' 
+#' @return O lista continand indicatori de succes, timp si numar de incercari
+print(simuleaza_o_cerere)
+```
+
+## Estimarea Probabilităților
+
+Rulăm o simulare Monte Carlo cu $M=10000$ de cereri, având parametrii: $n_{max}=3$, $p=0.7$, $t_{SLA}=400$.
+
+```{r}
+set.seed(123)
+M <- 10000    
+n0_prag <- 2  
+t0_prag <- 400 
+
+rezultate <- replicate(M, simuleaza_o_cerere(n_max = 3, p_succes = 0.7, t_0 = t0_prag))
+df_cereri <- as.data.frame(t(rezultate))
+df_cereri[] <- lapply(df_cereri, unlist)
+
+# Estimare Probabilitati
+prob_A <- mean(df_cereri$I == 1)
+prob_B <- mean(df_cereri$T <= t0_prag)
+prob_C <- mean(df_cereri$N <= n0_prag)
+prob_inter <- mean(df_cereri$I == 1 & df_cereri$T <= t0_prag)
+prob_reuniune <- mean(df_cereri$I == 1 | df_cereri$D == TRUE)
+
+# Afisare Tabelara
+rezultate_sim <- data.frame(
+  Eveniment = c("P(A) - Succes", "P(B) - SLA", "P(C) - Max 2 Incercari", "P(A intersect B)", "P(A reunion D)"),
+  Probabilitate = c(prob_A, prob_B, prob_C, prob_inter, prob_reuniune)
+)
+
+knitr::kable(rezultate_sim, digits = 4, caption = "Probabilități Empirice Estimate")
+```
+
+## Verificarea Formulelor
+
+Verificăm numeric formula probabilității reuniunii: $P(A \cup D) = P(A) + P(D) - P(A \cap D)$.
+
+```{r}
+prob_D <- mean(df_cereri$D == TRUE)
+prob_A_intersect_D <- mean(df_cereri$I == 1 & df_cereri$D == TRUE)
+
+formula_calculata <- prob_A + prob_D - prob_A_intersect_D
+
+cat("P(A U D) Empiric:   ", prob_reuniune, "\n")
+cat("P(A) + P(D) - Inter:", formula_calculata, "\n")
+cat("Diferenta:          ", abs(prob_reuniune - formula_calculata), "\n")
+```
+
+Rezultatul confirmă validitatea simulării, diferența fiind neglijabilă (în limita preciziei floating-point).

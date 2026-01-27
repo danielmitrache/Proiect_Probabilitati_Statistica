@@ -1,0 +1,115 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("R/08_inegalitati.R")
+```
+
+# 8. Inegalități Probabilistice (Cerința 8)
+
+Acest capitol se concentrează pe validarea și utilizarea inegalităților probabilistice clasice pentru a analiza comportamentul sistemului de retry. Aceste inegalități oferă limite teoretice ("bounds") utile atunci când distribuția exactă este dificil de calculat.
+
+## Funcția de Simulare Avansată
+
+Pentru acest exercițiu, folosim o versiune extinsă a simulării care include un mecanism de *backoff exponențial*:
+
+```{r}
+#' Simuleaza procesul si returneaza timpul si nr de esecuri
+#' 
+#' @param n_max Numar maxim de incercari
+#' @param p_succes Probabilitate de succes
+#' @param medie_S_initial Media timpului initial
+#' @param backoff_fix Timp de asteptare (backoff)
+#' @param factor_latenta Factor de crestere a latentei
+#' @return Lista cu timpul total si numarul de esecuri
+print(simuleaza_avansat)
+```
+
+## a) Inegalitățile lui Markov și Cebîșev
+
+### 1. Inegalitatea lui Markov
+Pentru o variabilă aleatoare nenegativă $X$ și $a > 0$:
+$$P(X \ge a) \le \frac{E[X]}{a}$$
+În contextul nostru, $X$ este timpul total $T$. Alegem $a = 2 \cdot E[T]$. Limita teoretică este $1/2 = 0.5$.
+
+### 2. Inegalitatea lui Cebîșev
+Pentru orice variabilă aleatoare cu varianță finită și $k > 0$:
+$$P(|X - E[X]| \ge k\sigma) \le \frac{1}{k^2}$$
+Verificăm pentru $k=2$. Limita teoretică este $1/4 = 0.25$.
+
+### Validare Numerică
+
+Rulăm simularea cu $N=10000$ cereri și comparăm rezultatele empirice (obținute prin simulare) cu cele teoretice (calculate analitic).
+
+```{r}
+set.seed(42)
+M <- 10000 
+n_max <- 5 
+p <- 0.4
+mu <- 100
+bf <- 20
+fact <- 1.5 
+
+# 1. Simulare
+rezultate <- replicate(M, simuleaza_avansat(n_max, p, mu, bf, fact), simplify = FALSE)
+T_vals <- sapply(rezultate, function(x) x$timp)
+
+# 2. Valori Teoretice
+teoretic <- calculeaza_teoretic_T(n_max, p, mu, bf, fact)
+media_teoretica <- teoretic$media
+var_teoretica <- teoretic$varianta
+
+# a) Verificare Markov
+prob_markov <- mean(T_vals >= 2 * media_teoretica)
+
+# b) Verificare Cebisev
+dist <- 2 * sqrt(var_teoretica)
+prob_ceb <- mean(abs(T_vals - media_teoretica) >= dist)
+
+df_rezultate <- data.frame(
+  Inegalitate = c("Markov (a=2*E[T])", "Cebisev (k=2)"),
+  Prob_Empirica = c(prob_markov, prob_ceb),
+  Limita_Teoretica = c(0.50, 0.25),
+  Respectat = c(prob_markov <= 0.50, prob_ceb <= 0.25)
+)
+
+knitr::kable(df_rezultate, caption = "Validarea Inegalităților")
+```
+
+## b) Inegalitatea lui Chernoff (pentru eșecuri)
+
+Chernoff oferă limite exponențiale mult mai strânse ("sharp bounds") pentru sumele de variabile aleatoare independente.
+Aici analizăm numărul de eșecuri.
+
+```{r}
+Esc_vals <- sapply(rezultate, function(x) x$esecuri)
+x0 <- 3 # Verificam prob >= 3 esecuri
+
+# Estimare MGF empiric
+t_val <- 0.5
+mgf <- mean(exp(t_val * Esc_vals))
+
+prob_esec <- mean(Esc_vals >= x0)
+bound <- mgf / exp(t_val * x0)
+
+cat("Probabilitate Reala (Empirica):", prob_esec, "\n")
+cat("Limita Chernoff Calculate:      ", bound, "\n")
+cat("Verificare (Reala <= Limita):   ", prob_esec <= bound, "\n")
+```
+
+## c) Inegalitatea lui Jensen
+
+Pentru o funcție convexă $\phi$, avem:
+$$\phi(E[T]) \le E[\phi(T)]$$
+Aceasta este crucială în analiza de risc, unde costurile cresc adesea neliniar (convex) cu timpul de așteptare.
+
+Considerăm funcția de cost pătratică $\phi(x) = x^2$.
+
+```{r}
+phi <- function(x) x^2
+lhs <- phi(mean(T_vals))   # phi(E[T])
+rhs <- mean(phi(T_vals))   # E[phi(T)]
+
+cat("phi(E[T]) [Costul timpului mediu]: ", lhs, "\n")
+cat("E[phi(T)] [Media costurilor]:      ", rhs, "\n")
+cat("Diferenta (Risc Subestimat):       ", rhs - lhs, "\n")
+```
+Se observă clar că $E[\phi(T)]$ este mai mare. Dacă am dimensiona bugetul bazându-ne doar pe timpul mediu, am subestima sistematic costurile reale.
