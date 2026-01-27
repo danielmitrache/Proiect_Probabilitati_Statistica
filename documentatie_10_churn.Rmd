@@ -1,0 +1,85 @@
+```{r, echo=FALSE}
+# Sursa fisierului original
+if(file.exists("R/10_churn.R")) source("R/10_churn.R")
+```
+
+# 10. Churn (Cerința 10)
+
+Un aspect critic în modelarea sistemelor reale este comportamentul utilizatorilor, în special decizia de a părăsi platforma ("Churn"). În acest model, considerăm două cauze distincte pentru churn:
+
+1.  **Churn Aleator (Natural):** Utilizatorul pleacă din motive externe, independente de performanța sistemului (ex: nu mai are nevoie de serviciu).
+2.  **Churn Condiționat (Tehnic):** Utilizatorul pleacă din cauza frustrării acumulate în urma erorilor tehnice repetate.
+
+## a) Funcțiile de Simulare
+
+### Churn Aleator
+Această funcție modelează plecarea ca un proces Bernoulli simplu cu probabilitatea $q$.
+
+```{r}
+simuleaza_churn_aleator <- function(q = 0.05) {
+  return(runif(1) < q)
+}
+```
+
+### Churn Condiționat
+Utilizatorul monitorizează o fereastră de $m$ interacțiuni recente. Dacă numărul de eșecuri depășește un prag $k$, utilizatorul părăsește platforma. Numărul de eșecuri este modelat Binomial ($Bin(m, 1-p_{succes})$).
+
+```{r}
+simuleaza_churn_conditionat <- function(m = 20, k = 5, p_succes = 0.9) {
+  # Numarul de esecuri intr-o secventa de lungime m (dist Binomiala)
+  nr_esecuri <- rbinom(1, size = m, prob = 1 - p_succes)
+  
+  # Verificam daca s-a depasit pragul de k esecuri
+  if (nr_esecuri >= k) {
+    return(TRUE)
+  } 
+  else {
+    return(FALSE)
+  }
+}
+```
+
+## b) Estimarea Ratei Totale de Churn
+
+Rata totală de churn este reuniunea celor două evenimente (Aleator SAU Condiționat). Deoarece un utilizator poate pleca din ambele motive simultan, probabilitatea totală nu este simpla sumă, ci:
+$$P(Total) = P(Aleator \cup Conditionat) = P(Aleator) + P(Conditionat) - P(Aleator \cap Conditionat)$$
+
+Execuția de mai jos simulează comportamentul pentru $M=100.000$ de utilizatori pentru a estima empiric aceste probabilități.
+
+```{r}
+if (TRUE) { # Am inlocuit sys.nframe() == 0 cu TRUE pentru executie in Rmd
+  set.seed(123) 
+  
+  M <- 100000 # Numarul de utilizatori
+  
+  #REZOLVARE a)
+  
+  #Simulamrea vectorului pentru Churn Aleator
+  vec_aleator <- replicate(M, simuleaza_churn_aleator(q = 0.05))
+  
+  #Simularea vectorului pentru Churn Conditionat
+  vec_conditionat <- replicate(M, simuleaza_churn_conditionat(m = 20, k = 4, 
+                                                              p_succes = 0.75))
+
+  #REZOLVARE b)
+  
+  #Calculul Churn-ului total
+  vec_total <- (vec_aleator | vec_conditionat)
+  
+  #Estimari
+  prob_aleator     <- mean(vec_aleator)
+  prob_conditionat <- mean(vec_conditionat)
+  prob_total       <- mean(vec_total)
+  
+  #Afisare Rezultate
+  cat("Analiza Churn cu urmatorii parametri:\n")
+  cat("m =", 20, ", k =", 5, ", p_succes =", 0.75, "\n")
+  
+  cat("\nProbabilitati estimate (M =", M, "):\n")
+  cat("1. P(Churn Aleator):     ", round(prob_aleator, 4), "\n")
+  cat("2. P(Churn Conditionat): ", round(prob_conditionat, 4), "\n")
+  cat("3. P(Churn TOTAL):       ", round(prob_total, 4), "\n")
+}
+```
+
+Aceste rezultate ne permit să înțelegem cât din pierderea clienților este controlabilă (tehnică) și cât este inevitabilă (naturală).
