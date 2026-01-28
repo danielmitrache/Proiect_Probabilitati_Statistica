@@ -3,16 +3,16 @@
 if(file.exists("R/10_churn.R")) source("R/10_churn.R")
 ```
 
-# 11. Churn (Cerința 10)
+# 10. Churn (Cerința 10)
 
 Un aspect critic în modelarea sistemelor reale este comportamentul utilizatorilor, în special decizia de a părăsi platforma ("Churn"). În acest model, considerăm două cauze distincte pentru churn:
 
-1.  **Churn Aleator (Natural):** Utilizatorul pleacă din motive externe, independente de performanța sistemului (ex: nu mai are nevoie de serviciu).
-2.  **Churn Condiționat (Tehnic):** Utilizatorul pleacă din cauza frustrării acumulate în urma erorilor tehnice repetate.
+1.  **Churn aleator (natural):** Utilizatorul pleacă din motive externe, independente de performanța sistemului (ex: nu mai are nevoie de serviciu).
+2.  **Churn condiționat (tehnic):** Utilizatorul pleacă din cauza frustrării acumulate în urma erorilor tehnice repetate.
 
-## a) Funcțiile de Simulare
+## a) Funcțiile de simulare (churn aleator și condiționat)
 
-### Churn Aleator
+### Churn aleator
 Această funcție modelează plecarea ca un proces Bernoulli simplu cu probabilitatea $q$.
 
 ```{r}
@@ -21,7 +21,7 @@ simuleaza_churn_aleator <- function(q = 0.05) {
 }
 ```
 
-### Churn Condiționat
+### Churn condiționat
 Utilizatorul monitorizează o fereastră de $m$ interacțiuni recente. Dacă numărul de eșecuri depășește un prag $k$, utilizatorul părăsește platforma. Numărul de eșecuri este modelat Binomial ($Bin(m, 1-p_{succes})$).
 
 ```{r}
@@ -39,7 +39,7 @@ simuleaza_churn_conditionat <- function(m = 20, k = 5, p_succes = 0.9) {
 }
 ```
 
-## b) Estimarea Ratei Totale de Churn
+## b) Estimarea ratei totale de churn
 
 Rata totală de churn este reuniunea celor două evenimente (Aleator SAU Condiționat). Deoarece un utilizator poate pleca din ambele motive simultan, probabilitatea totală nu este simpla sumă, ci:
 $$P(Total) = P(Aleator \cup Conditionat) = P(Aleator) + P(Conditionat) - P(Aleator \cap Conditionat)$$
@@ -47,23 +47,23 @@ $$P(Total) = P(Aleator \cup Conditionat) = P(Aleator) + P(Conditionat) - P(Aleat
 Execuția de mai jos simulează comportamentul pentru $M=100.000$ de utilizatori pentru a estima empiric aceste probabilități.
 
 ```{r}
-if (TRUE) { # Am inlocuit sys.nframe() == 0 cu TRUE pentru executie in Rmd
+if (TRUE) {
   set.seed(123) 
   
   M <- 100000 # Numarul de utilizatori
   
   #REZOLVARE a)
   
-  #Simulamrea vectorului pentru Churn Aleator
+  #Simularea vectorului pentru Churn aleator
   vec_aleator <- replicate(M, simuleaza_churn_aleator(q = 0.05))
   
-  #Simularea vectorului pentru Churn Conditionat
+  #Simularea vectorului pentru Churn conditionat
   vec_conditionat <- replicate(M, simuleaza_churn_conditionat(m = 20, k = 4, 
                                                               p_succes = 0.75))
 
   #REZOLVARE b)
   
-  #Calculul Churn-ului total
+  #Calculul churn-ului total
   vec_total <- (vec_aleator | vec_conditionat)
   
   #Estimari
@@ -71,15 +71,56 @@ if (TRUE) { # Am inlocuit sys.nframe() == 0 cu TRUE pentru executie in Rmd
   prob_conditionat <- mean(vec_conditionat)
   prob_total       <- mean(vec_total)
   
-  #Afisare Rezultate
+  #Afisare rezultate
   cat("Analiza Churn cu urmatorii parametri:\n")
   cat("m =", 20, ", k =", 5, ", p_succes =", 0.75, "\n")
   
   cat("\nProbabilitati estimate (M =", M, "):\n")
-  cat("1. P(Churn Aleator):     ", round(prob_aleator, 4), "\n")
-  cat("2. P(Churn Conditionat): ", round(prob_conditionat, 4), "\n")
+  cat("1. P(Churn aleator):     ", round(prob_aleator, 4), "\n")
+  cat("2. P(Churn conditionat): ", round(prob_conditionat, 4), "\n")
   cat("3. P(Churn TOTAL):       ", round(prob_total, 4), "\n")
 }
 ```
 
 Aceste rezultate ne permit să înțelegem cât din pierderea clienților este controlabilă (tehnică) și cât este inevitabilă (naturală).
+
+## c) Comparație scenarii și interpretare
+
+Vom analiza impactul parametrilor asupra ratei totale de Churn comparând trei scenarii:
+
+1.  **Scenariul de bază:** `p_succes = 0.75`, `k = 5` (utilizatori moderați).
+2.  **Siguranță îmbunătățită:** `p_succes = 0.90`, `k = 5`. 
+3.  **Utilizatori exigenți:** `p_succes = 0.75`, `k = 3`. Utilizatorii au toleranță scăzută la erori.
+
+```{r}
+calculeaza_churn_mediu <- function(M, m, k, p_succes, q) {
+  vec_aleator <- replicate(M, simuleaza_churn_aleator(q))
+  vec_conditionat <- replicate(M, simuleaza_churn_conditionat(m, k, p_succes))
+  return(mean(vec_aleator | vec_conditionat))
+}
+
+M <- 50000 
+m <- 20
+q <- 0.05
+
+churn_normal <- calculeaza_churn_mediu(M, m, k=5, p_succes=0.75, q)
+
+churn_sistem <- calculeaza_churn_mediu(M, m, k=5, p_succes=0.90, q)
+
+churn_exigent <- calculeaza_churn_mediu(M, m, k=3, p_succes=0.75, q)
+
+df_comp <- data.frame(
+  Scenariu = c("Normal", "Siguranta sistem + (p=0.9)", "Exigenta + (k=3)"),
+  Churn_Total = c(churn_normal, churn_sistem, churn_exigent)
+)
+
+knitr::kable(df_comp, digits = 4, caption = "Impactul parametrilor asupra Churn-ului")
+```
+
+**Interpretare:**
+
+*   **Siguranța sistemului (`p_succes`):** Creșterea siguranței sitemului reduce drastic churn-ul tehnic. Aceasta este o variabilă ce nu depinde de client, ci de sistemul pe care îl administrăm.
+
+*   **Toleranța utilizatorilor (`k`):** Dacă utilizatorii devin mai exigenți (scade pragul `k`), churn-ul crește chiar dacă sistemul rămâne la fel.
+
+*   **Limita inferioară:** Indiferent cât de perfect este sistemul tehnic, rata de churn nu poate scădea sub $P(Aleator) = q$.
