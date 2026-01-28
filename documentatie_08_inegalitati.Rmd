@@ -3,43 +3,16 @@ knitr::opts_chunk$set(echo = TRUE)
 source("R/08_inegalitati.R")
 ```
 
-# 9. Inegalități Probabilistice (Cerința 8)
 
-Acest capitol se concentrează pe validarea și utilizarea inegalităților probabilistice clasice pentru a analiza comportamentul sistemului de retry. Aceste inegalități oferă limite teoretice ("bounds") utile atunci când distribuția exactă este dificil de calculat.
+# 9. Inegalități probabilistice (garanții worst-case) (Cerința 8)
 
-## Funcția de Simulare Avansată
+Acest capitol se concentrează pe validarea și utilizarea inegalităților probabilistice clasice pentru a analiza comportamentul sistemului de retry. Acestea oferă limite superioare ("worst-case") pentru probabilitățile de risc.
 
-Pentru acest exercițiu, folosim o versiune extinsă a simulării care include un mecanism de *backoff exponențial*:
-
+Pentru simulare, folosim un set de date generat cu următorii parametri:
 ```{r}
 #' Simuleaza procesul si returneaza timpul si nr de esecuri
-#' 
-#' @param n_max Numar maxim de incercari
-#' @param p_succes Probabilitate de succes
-#' @param medie_S_initial Media timpului initial
-#' @param backoff_fix Timp de asteptare (backoff)
-#' @param factor_latenta Factor de crestere a latentei
-#' @return Lista cu timpul total si numarul de esecuri
 print(simuleaza_avansat)
-```
 
-## a) Inegalitățile lui Markov și Cebîșev
-
-### 1. Inegalitatea lui Markov
-Pentru o variabilă aleatoare nenegativă $X$ și $a > 0$:
-$$P(X \ge a) \le \frac{E[X]}{a}$$
-În contextul nostru, $X$ este timpul total $T$. Alegem $a = 2 \cdot E[T]$. Limita teoretică este $1/2 = 0.5$.
-
-### 2. Inegalitatea lui Cebîșev
-Pentru orice variabilă aleatoare cu varianță finită și $k > 0$:
-$$P(|X - E[X]| \ge k\sigma) \le \frac{1}{k^2}$$
-Verificăm pentru $k=2$. Limita teoretică este $1/4 = 0.25$.
-
-### Validare Numerică
-
-Rulăm simularea cu $N=10000$ cereri și comparăm rezultatele empirice (obținute prin simulare) cu cele teoretice (calculate analitic).
-
-```{r}
 set.seed(42)
 M <- 10000 
 n_max <- 5 
@@ -48,69 +21,111 @@ mu <- 100
 bf <- 20
 fact <- 1.5 
 
-# 1. Simulare
+# Generam datele
 rezultate <- replicate(M, simuleaza_avansat(n_max, p, mu, bf, fact), simplify = FALSE)
 T_vals <- sapply(rezultate, function(x) x$timp)
+Esec_vals <- sapply(rezultate, function(x) x$esecuri)
 
-# 2. Valori Teoretice
+# Valori teoretice (calculate analitic pentru comparatie)
 teoretic <- calculeaza_teoretic_T(n_max, p, mu, bf, fact)
-media_teoretica <- teoretic$media
-var_teoretica <- teoretic$varianta
+E_T <- teoretic$media
+Var_T <- teoretic$varianta
+```
 
-# a) Verificare Markov
-prob_markov <- mean(T_vals >= 2 * media_teoretica)
+## a) Verificați numeric inegalitățile Markov și Cebîșev (empiric versus teoretic)
 
-# b) Verificare Cebisev
-dist <- 2 * sqrt(var_teoretica)
-prob_ceb <- mean(abs(T_vals - media_teoretica) >= dist)
+### Inegalitatea lui Markov
+Pentru o variabilă aleatoare nenegativă $T$ și $a > 0$:
+$$P(T \ge a) \le \frac{E[T]}{a}$$
+Alegem $a = 2 \cdot E[T]$. Limita teoretică este $0.5$.
 
-df_rezultate <- data.frame(
-  Inegalitate = c("Markov (a=2*E[T])", "Cebisev (k=2)"),
-  Prob_Empirica = c(prob_markov, prob_ceb),
-  Limita_Teoretica = c(0.50, 0.25),
-  Respectat = c(prob_markov <= 0.50, prob_ceb <= 0.25)
+### Inegalitatea lui Cebîșev
+Pentru orice variabilă cu medie și varianță finite:
+$$P(|T - E[T]| \ge k\sigma) \le \frac{1}{k^2}$$
+Alegem $k=2$. Limita teoretică este $1/4 = 0.25$.
+
+```{r}
+# Markov (a = 2 * E[T])
+prob_markov_empiric <- mean(T_vals >= 2 * E_T)
+limita_markov <- 0.5
+
+# Cebisev (k = 2)
+sigma_T <- sqrt(Var_T)
+prob_cebisev_empiric <- mean(abs(T_vals - E_T) >= 2 * sigma_T)
+limita_cebisev <- 0.25
+
+df_ineg <- data.frame(
+  Inegalitate = c("Markov (a=2E[T])", "Cebisev (k=2)"),
+  Prob_Empirica = c(prob_markov_empiric, prob_cebisev_empiric),
+  Limita_Teoretica = c(limita_markov, limita_cebisev),
+  Verificare = c(prob_markov_empiric <= limita_markov, prob_cebisev_empiric <= limita_cebisev)
 )
-
-knitr::kable(df_rezultate, caption = "Validarea Inegalităților")
+knitr::kable(df_ineg, caption = "Validare Markov și Cebîșev")
 ```
 
-## b) Inegalitatea lui Chernoff (pentru eșecuri)
+## b) Pentru variabila număr de eșecuri/încercări verificați o inegalitate de tip Chernoff
 
-Chernoff oferă limite exponențiale mult mai strânse ("sharp bounds") pentru sumele de variabile aleatoare independente.
-Aici analizăm numărul de eșecuri.
+Inegalitatea lui Chernoff oferă limite exponențiale. Pentru variabila $X$ (număr eșecuri), limita este dată de funcția generatoare de momente $M_X(t) = E[e^{tX}]$.
+$$P(X \ge a) \le \frac{E[e^{tX}]}{e^{ta}}, \quad \forall t > 0$$
+
+Vom verifica această inegalitate pentru un prag de eșecuri $a=3$ și un parametru arbitrar $t=0.5$.
 
 ```{r}
-Esc_vals <- sapply(rezultate, function(x) x$esecuri)
-x0 <- 3 # Verificam prob >= 3 esecuri
-
-# Estimare MGF empiric
+a <- 3
 t_val <- 0.5
-mgf <- mean(exp(t_val * Esc_vals))
 
-prob_esec <- mean(Esc_vals >= x0)
-bound <- mgf / exp(t_val * x0)
+# Calculam empiric MGF: E[e^(t*X)]
+mgf_empiric <- mean(exp(t_val * Esec_vals))
 
-cat("Probabilitate Reala (Empirica):", prob_esec, "\n")
-cat("Limita Chernoff Calculate:      ", bound, "\n")
-cat("Verificare (Reala <= Limita):   ", prob_esec <= bound, "\n")
+# Calculam limita Chernoff
+limita_chernoff <- mgf_empiric / exp(t_val * a)
+
+# Probabilitatea reala din date
+prob_reala_esecuri <- mean(Esec_vals >= a)
+
+cat("Probabilitate Reala (P(X >= 3)): ", prob_reala_esecuri, "\n")
+cat("Limita Chernoff Calculate:       ", limita_chernoff, "\n")
+cat("Verificare (Reala <= Limita):    ", prob_reala_esecuri <= limita_chernoff, "\n")
 ```
 
-## c) Inegalitatea lui Jensen
+## c) Interpretați utilitatea acestor limite când distribuțiile exacte sunt necunoscute
 
-Pentru o funcție convexă $\phi$, avem:
-$$\phi(E[T]) \le E[\phi(T)]$$
-Aceasta este crucială în analiza de risc, unde costurile cresc adesea neliniar (convex) cu timpul de așteptare.
+În practică, rareori cunoaștem distribuția exactă a timpilor de răspuns sau a erorilor unui sistem complex. Cu toate acestea:
 
-Considerăm funcția de cost pătratică $\phi(x) = x^2$.
+1.  **Dacă știm doar media** (ușor de măsurat), inegalitatea lui **Markov** ne oferă o garanție absolută ("worst-case") că nu vom depăși un anumit prag de latență prea des.
+2.  **Dacă știm și varianța**, **Cebîșev** rafinează această limită, spunându-ne cât de "concentrate" sunt valorile în jurul mediei.
+3.  **Dacă presupunem independența erorilor**, **Chernoff** ne dă limite extrem de strânse (exponențiale) pentru, de exemplu, riscul ca 50% din servere să pice simultan.
+
+Aceste limite permit inginerilor să stabilească SLA-uri (Service Level Agreements) sigure, chiar și în absența unor date istorice detaliate.
+
+## d) Pentru o funcție convexă $\varphi$ (ex.: $x^2$, $e^x$) verificați numeric $\varphi(E(T)) \le E(\varphi(T))$ (inegalitatea lui Jensen)
+
+Această inegalitate afirmă că media funcției este mai mare sau egală cu funcția aplicată mediei, pentru funcții convexe.
+Alegem funcția de cost convexă $\varphi(t) = t^2$, care penalizează timpii lungi disproporționat de mult.
 
 ```{r}
-phi <- function(x) x^2
-lhs <- phi(mean(T_vals))   # phi(E[T])
-rhs <- mean(phi(T_vals))   # E[phi(T)]
+phi <- function(t) t^2
 
-cat("phi(E[T]) [Costul timpului mediu]: ", lhs, "\n")
-cat("E[phi(T)] [Media costurilor]:      ", rhs, "\n")
-cat("Diferenta (Risc Subestimat):       ", rhs - lhs, "\n")
+# Partea stanga a inegalitatii: phi( E[T] )
+lhs <- phi(mean(T_vals))
+
+# Partea dreapta a inegalitatii: E[ phi(T) ]
+rhs <- mean(phi(T_vals))
+
+cat("phi(E[T]) = (Media)^2: ", lhs, "\n")
+cat("E[phi(T)] = Media patratelor: ", rhs, "\n")
+cat("Diferenta (rhs - lhs): ", rhs - lhs, "\n")
+cat("Verificare Jensen (lhs <= rhs): ", lhs <= rhs, "\n")
 ```
-Se observă clar că $E[\phi(T)]$ este mai mare. Dacă am dimensiona bugetul bazându-ne doar pe timpul mediu, am subestima sistematic costurile reale.
+
+## e) Interpretați rezultatul de la d) în contextul riscului (penalizarea valorilor extreme)
+
+Rezultatul $E[\varphi(T)] > \varphi(E[T])$ are o semnificație economică critică:
+
+Dacă evaluăm performanța sistemului doar pe baza **"timpului mediu de răspuns"** ($E[T]$) și aplicăm costul la această medie ($\varphi(E[T])$), vom **subestima sistematic** costurile reale.
+
+Deoarece funcția de cost este convexă (ex: pierderile financiare cresc exponențial cu întârzierea - clienții devin mult mai frustrați la 10 secunde decât la 5 secunde), valorile extreme (outlierii) contribuie la costul mediu mult mai mult decât sugerează simpla medie a timpilor.
+
+**Concluzie:** În analiza de risc, a ne baza pe "cazul mediu" este o greșeală. Trebuie să calculăm "media costurilor", nu "costul mediei", pentru a lua în considerare impactul evenimentelor rare dar catastrofale.
+
 
