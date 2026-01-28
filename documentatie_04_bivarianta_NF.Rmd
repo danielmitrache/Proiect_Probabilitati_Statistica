@@ -1,7 +1,5 @@
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-# In proiect, fisierele sunt in folderul R/
-# (asigura-te ca numele fisierelor respecta exact literele mari/mici)
 source("R/03_evenimente.r")
 source("R/04_bivarianta_NF.R")
 ```
@@ -112,3 +110,4 @@ par(mfrow = c(1, 1))
 ```
 
 **Interpretare:** ne așteptăm ca testul de independență să respingă independența, deoarece **F este aproape determinată de N** (prin relația \\(F=N-1\\) la succes și \\(F=N\\) la eșec final). Consecința: numărul de retry-uri controlează direct numărul de eșecuri, deci variabilele sunt dependente în modelul nostru.
+
