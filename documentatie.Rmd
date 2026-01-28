@@ -9,6 +9,9 @@ date: "Ianuarie 2026"
 output:
   pdf_document:
     latex_engine: xelatex
+    dev: cairo_pdf
+    toc: true
+    toc_depth: 3
 ---
 
 ```{r setup, include=FALSE}
@@ -710,14 +713,49 @@ knitr::kable(rezultate_sim, digits = 4, caption = "Probabilități Empirice Esti
 
 Grafic, aceste probabilități sunt distribuite astfel:
 
-```{r, echo=FALSE, fig.height=4, fig.width=6, fig.align='center'}
-ggplot(rezultate_sim, aes(x = Eveniment, y = Probabilitate_Empirica)) +
-  geom_bar(stat = "identity", fill = "steelblue", width = 0.6) +
-  geom_text(aes(label = round(Probabilitate_Empirica, 3)), vjust = -0.5) +
-  ylim(0, 1.1) +
-  theme_minimal() +
-  labs(title = "Probabilități Estimate", x = NULL, y = "Probabilitate") +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```{r, echo=FALSE, fig.height=5, fig.width=7, fig.align='center'}
+
+p_A <- mean(df_cereri$I == 1)                                  # Succes
+p_B <- mean(df_cereri$T <= 400)                                # SLA
+p_C <- mean(df_cereri$N <= 2)                                  # Eficienta
+p_inter <- mean(df_cereri$I == 1 & df_cereri$T <= 400)         # Intersectie
+p_reuniune <- mean(df_cereri$I == 1 | df_cereri$D == TRUE)     # Reuniune
+
+# --- 2. PREGATIRE DATE GRAFIC ---
+valori_plot <- c(p_A, p_B, p_C, p_inter, p_reuniune)
+
+etichete_plot <- c("P(A) - Succes", 
+                   "P(B) - SLA", 
+                   "P(C) - Max 2", 
+                   "P(A si B)", 
+                   "P(A sau D)")
+
+# --- 3. DESENARE BARPLOT (Base R) ---
+# Marginile (jos, stanga, sus, dreapta)
+par(mar = c(7, 5, 4, 2))
+
+bp <- barplot(height = valori_plot,
+              names.arg = NA,       # Fara nume automate
+              col = "steelblue",
+              ylim = c(0, 1.15),
+              main = "Probabilități Estimate prin Simulare",
+              ylab = "Probabilitate",
+              border = "white",
+              las = 1)
+
+# Adaugam valorile pe bare
+text(x = bp, 
+     y = valori_plot, 
+     labels = round(valori_plot, 3), 
+     pos = 3, cex = 0.9)
+
+# Adaugam etichetele rotite sub bare
+text(x = bp, 
+     y = -0.05, 
+     labels = etichete_plot, 
+     srt = 45, adj = 1, xpd = TRUE, cex = 0.8)
+
+abline(h = 0)
 ```
 
 ## b) Verificați numeric formulele pentru reuniune/intersecție
@@ -842,7 +880,7 @@ par(mfrow = c(1, 2))
 
 # Heatmap (probabilitati empirice)
 image(
-  x = x_vals, y = y_vals, z = t(prob_mat),
+  x = x_vals, y = y_vals, z = prob_mat,
   xlab = "N (nr. încercări)", ylab = "F (nr. eșecuri)",
   main = "Heatmap: P(N,F) (empiric)",
   axes = FALSE
