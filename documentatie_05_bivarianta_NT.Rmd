@@ -1,0 +1,77 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("R/03_evenimente.r")
+source("R/05_bivarianta_NT.R")
+```
+
+# 5. Variabile aleatoare bidimensionale (discrete și continue) (Cerința 5)
+
+În această cerință analizăm variabila bidimensională **(N, T)**:
+
+\\begin{itemize}
+  \\item **N** = numărul total de încercări (variabilă discretă)
+  \\item **T** = timpul total până la succes sau abandon (variabilă continuă)
+\\end{itemize}
+
+În modelul nostru, **T** include suma timpilor de procesare \\(S_i\\) și timpii de așteptare de tip backoff între încercări eșuate.
+
+## Implementarea simulării (N, T)
+
+Funcția `simuleaza_NT_din_ex3` generează un eșantion de perechi (N, T) folosind `simuleaza_o_cerere` din Cerința 3.
+
+```{r}
+print(simuleaza_NT_din_ex3)
+```
+
+## a) Reprezentare grafică (scatterplot)
+
+```{r}
+set.seed(42)
+
+M <- 100000
+n_max <- 3
+p_succes <- 0.7
+t_0 <- 400
+medie_S <- 150
+backoff_fix <- 50
+
+df_NT <- simuleaza_NT_din_ex3(
+  M = M, n_max = n_max, p_succes = p_succes,
+  t_0 = t_0, medie_S = medie_S, backoff_fix = backoff_fix
+)
+
+plot(
+  df_NT$N, df_NT$T,
+  xlab = "N (număr încercări)",
+  ylab = "T (timp total)",
+  main = "Scatterplot: (N, T)",
+  pch = 16, cex = 0.4
+)
+
+# Linia de regresie pentru a evidenția trendul
+abline(lm(T ~ N, data = df_NT), lwd = 2)
+```
+
+## b) Medii, varianțe, covarianță, corelație
+
+```{r}
+mean_N <- mean(df_NT$N)
+mean_T <- mean(df_NT$T)
+
+var_N <- var(df_NT$N)
+var_T <- var(df_NT$T)
+
+cov_NT <- cov(df_NT$N, df_NT$T)
+cor_NT <- cor(df_NT$N, df_NT$T)
+
+rez_stats <- data.frame(
+  Indicator = c("E[N]", "E[T]", "Var(N)", "Var(T)", "Cov(N,T)", "Corr(N,T)"),
+  Valoare = c(mean_N, mean_T, var_N, var_T, cov_NT, cor_NT)
+)
+
+knitr::kable(rez_stats, digits = 4, caption = "Statistici empirice pentru variabila (N, T)")
+```
+
+## c) Interpretarea corelației
+
+Ne așteptăm la **corelație pozitivă** între **N** și **T**: atunci când avem mai multe retry-uri (N mai mare), se acumulează mai mulți timpi de procesare \\(S_i\\) și, de regulă, mai mulți timpi de backoff, astfel încât timpul total **T** crește. În termeni de sistem, retry-urile cresc șansa de succes, dar cresc și latența percepută de utilizator.
