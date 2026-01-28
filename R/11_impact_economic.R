@@ -66,9 +66,18 @@ simuleaza_profit_zi <- function(nr_clienti,
                                 rata_churn_aleator = 0.05,
                                 dim_churn_cond = 20,
                                 prag_erori_churn_cond = 5,
-                                prob_succes_churn_cond = 0.9) {
+                                prob_succes_churn_cond = 0.9,
+                                n_max = 3,
+                                backoff_fix = 50,
+                                t_0 = 500,
+                                medie_S = 150) {
   
-  rezultate_zi <- simuleaza_lot_cereri(nr_clienti)
+  rezultate_zi <- simuleaza_lot_cereri(nr_clienti,
+                                       n_max = n_max,
+                                       backoff_fix = backoff_fix,
+                                       p_succes = prob_succes_churn_cond,
+                                       t_0 = t_0,
+                                       medie_S = medie_S)
   
   nr_succese <- sum(rezultate_zi$I == 1)
   
@@ -163,7 +172,11 @@ simuleaza_scenariu_economic <- function(n_zile = 100,
                                         rata_churn_aleator = 0.05,
                                         dim_churn_cond = 20,
                                         prag_erori_churn_cond = 5,
-                                        prob_succes_churn_cond = 0.9) {
+                                        prob_succes_churn_cond = 0.9,
+                                        n_max = 3,
+                                        backoff_fix = 50,
+                                        t_0 = 500,
+                                        medie_S = 150) {
   
   # 1. Generam Traficul (folosim functia din Ex 1)
   trafic_zilnic <- simuleaza_trafic(n_zile,
@@ -185,7 +198,11 @@ simuleaza_scenariu_economic <- function(n_zile = 100,
                                        rata_churn_aleator = rata_churn_aleator,
                                        dim_churn_cond = dim_churn_cond, 
                                        prag_erori_churn_cond = prag_erori_churn_cond,
-                                       prob_succes_churn_cond = prob_succes_churn_cond)
+                                       prob_succes_churn_cond = prob_succes_churn_cond,
+                                       n_max = n_max,
+                                       backoff_fix = backoff_fix,
+                                       t_0 = t_0,
+                                       medie_S = medie_S)
     
     profituri[i] <- rezultat_zi["Profit"]
   }
