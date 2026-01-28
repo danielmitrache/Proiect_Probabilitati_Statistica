@@ -67,7 +67,7 @@ if (TRUE) {
        xlab = "Latenta Totala (ms/zi)",
        ylab = "Densitate")
   
-  #Adaugam curba Teoretica Normala (linia rosie)
+  #Adaugam curba teoretica normala (linia rosie)
   curve(dnorm(x, mean = media_agregat, sd = sd_agregat), 
         add = TRUE, 
         col = "red", 
@@ -77,6 +77,6 @@ if (TRUE) {
 
 ### Explicație teoretică
 
-Graficul de mai sus demonstrează **Teorema Limită Centrală**. Chiar dacă latențele individuale sunt exponențiale (asimetrice), suma a ~1000 de astfel de latențe se așează pe o curbă în formă de clopot (Normală).
+Graficul de mai sus demonstrează **Teorema Limită Centrală**. Chiar dacă latențele individuale sunt exponențiale (asimetrice), suma a ~1000 de astfel de latențe se așează pe o curbă în formă de clopot (normală).
 
 Linia roșie reprezintă distribuția Normală teoretică parametrizată cu media și deviația standard empirică a datelor. Suprapunerea perfectă confirmă că putem folosi aproximarea normală pentru a face predicții despre traficul total al sistemului.
