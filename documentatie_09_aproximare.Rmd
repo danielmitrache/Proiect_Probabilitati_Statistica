@@ -3,11 +3,11 @@
 if(file.exists("R/09_aproximare.R")) source("R/09_aproximare.R")
 ```
 
-# 10. Aproximare (Cerința 9)
+# 9. Aproximare (Cerința 9)
 
 În problemele de trafic real, timpul total de procesare pe o perioadă lungă (o zi) este suma mai multor evenimente individuale (cereri). Deși timpii individuali pot avea distribuții exponențiale (asimetrice), suma lor tinde să devină normală (Gaussiană).
 
-## a) Funcția de Simulare
+## a) Funcția de simulare
 
 Următoarea funcție simulează activitatea dintr-o zi. Observați că numărul de termeni din sumă (`k_cereri`) este el însuși o variabilă aleatoare (Poisson), ceea ce face ca suma să fie una compusă.
 
@@ -54,7 +54,7 @@ if (TRUE) {
   cat("Media Empirica a sumei:    ", round(media_agregat, 2), "\n")
   cat("Deviatia Standard Empirica:", round(sd_agregat, 2), "\n")
   
-  #Vizualizare Comparativa
+  #Vizualizare și comparație
   par(mfrow = c(1, 1))
   
   #Histograma datelor agregate
@@ -75,7 +75,7 @@ if (TRUE) {
 }
 ```
 
-### Explicație Teoretică
+### Explicație teoretică
 
 Graficul de mai sus demonstrează **Teorema Limită Centrală**. Chiar dacă latențele individuale sunt exponențiale (asimetrice), suma a ~1000 de astfel de latențe se așează pe o curbă în formă de clopot (Normală).
 
