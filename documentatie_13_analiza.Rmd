@@ -6,43 +6,44 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Acest capitol prezintă o sinteză conceptuală a întregului proiect, integrând elemente de statistică descriptivă, probabilități, simulare Monte Carlo și analiză economică.
 
-## a) ROLUL PROBABILITATII EMPIRICE
+## a) Rolul Probabilității Empirice
 
-In acest proiect, probabilitatea empirica (obtinuta prin simulari Monte Carlo) a servit drept mecanism de VALIDARE pentru modelele teoretice.
-De exemplu, in ex. 8, am comparat media empirica a timpului de raspuns cu media teoretica. Convergenta valorilor pentru N mare a confirmat corectitudinea implementarii. De asemenea, cand distributiile sunt prea complexe pentru a fi calculate analitic (ex: sistem cu backoff exponential si churn dinamic), simularea ramane singura metoda viabila.
+În acest proiect, probabilitatea empirică (obținută prin simulări Monte Carlo) a servit drept mecanism de **validare** pentru modelele teoretice.
+De exemplu, în exercițiul 8, am comparat media empirică a timpului de răspuns cu media teoretică. Convergența valorilor pentru $N$ mare a confirmat corectitudinea implementării. De asemenea, când distribuțiile sunt prea complexe pentru a fi calculate analitic (ex: sistem cu backoff exponențial și churn dinamic), simularea rămâne singura metodă viabilă.
 
-## b) INFORMATIILE ADUSE DE CONDITIONARI
+## b) Informațiile Aduse de Condiționări
 
-Conditionarea reduce incertitudinea (entropia) sistemului.
+Condiționarea reduce incertitudinea (entropia) sistemului.
 
-1.  **Diagnostic:** Stiind ca un client a plecat (Churn), probabilitatea ca el sa fi intampinat erori tehnice creste (Bayes).
-2.  **Predictie:** Cunoscand istoricul recent (ultimele k cereri), putem estima mult mai precis riscul de esec imediat decat folosind media generala.
+1.  **Diagnostic:** Știind că un client a plecat (Churn), probabilitatea ca el să fi întâmpinat erori tehnice crește (inferență Bayesiană).
+2.  **Predicție:** Cunoscând istoricul recent (ultimele $k$ cereri), putem estima mult mai precis riscul de eșec imediat decât folosind media generală.
 
-Acest lucru permite sisteme adaptive: daca $P(Esec | Istoric) > prag$, declansam masuri preventive (ex: circuit breaker).
+Acest lucru permite sisteme adaptive: dacă $P(\text{Eșec} | \text{Istoric}) > \text{prag}$, declanșăm măsuri preventive (ex: circuit breaker).
 
-## c) UTILITATEA INEGALITATILOR PROBABILISTICE
+## c) Utilitatea Inegalităților Probabilistice
 
-Inegalitatile (Markov, Cebisev, Chernoff) ofera garantii de tip WORST-CASE.
+Inegalitățile (Markov, Cebîșev, Chernoff) oferă garanții de tip **WORST-CASE**.
 
-*   **Markov** ne da o limita superioara 'hard' pentru media cozilor/timpilor.
-*   **Cebisev** ne arata stabilitatea sistemului (cat de rar deviem de la medie).
-*   **Chernoff** este esentiala pentru SLA (Service Level Agreements), oferind limite exponentiale pentru evenimente rare dar catastrofale (ex: caderea simultana a serverelor). Ele permit dimensionarea sigura a resurselor.
+*   **Markov** ne dă o limită superioară 'hard' pentru media cozilor/timpilor.
+*   **Cebîșev** ne arată stabilitatea sistemului (cât de rar deviem de la medie).
+*   **Chernoff** este esențială pentru SLA (Service Level Agreements), oferind limite exponențiale pentru evenimente rare dar catastrofale (ex: căderea simultană a serverelor). Ele permit dimensionarea sigură a resurselor.
 
-## d) LEGATURA PERFORMANTA TEHNICA - IMPACT ECONOMIC
+## d) Legătura Performanță Tehnică - Impact Economic
 
-Relatia nu este liniara, ci puternic asimetrica.
+Relația nu este liniară, ci puternic asimetrică.
 
-*   O scadere mica a performantei tehnice (ex: p_succes scade de la 99% la 95%) poate duce la pierderi economice disproportionate din cauza efectului de compunere (utilizatorii pleaca, viralitate negativa - Churn).
-*   Exista un punct de 'diminishing returns': imbunatatirea de la 99.9% la 99.99% costa enorm tehnic, dar poate aduce beneficii marginale economic, daca utilizatorii nu percep diferenta.
+*   O scădere mică a performanței tehnice (ex: $p_{succes}$ scade de la 99% la 95%) poate duce la pierderi economice disproporționate din cauza efectului de compunere (utilizatorii pleacă, viralitate negativă - Churn).
+*   Există un punct de 'diminishing returns': îmbunătățirea de la 99.9% la 99.99% costă enorm tehnic, dar poate aduce beneficii marginale economic, dacă utilizatorii nu percep diferența.
 
-## e) PARAMETRI CHEIE SI IMBUNATATIRI
+## e) Parametri Cheie și Îmbunătățiri
 
-Cei mai influenti parametri identificati sunt:
+Cei mai influenți parametri identificați sunt:
 
-1.  **Probabilitatea de succes primara (p_succes):** influenteaza tot lantul.
-2.  **Factorul de Backoff:** determina cat de repede se congestioneaza sistemul.
+1.  **Probabilitatea de succes primară ($p_{succes}$):** influențează tot lanțul.
+2.  **Factorul de Backoff:** determină cât de repede se congestionează sistemul.
 
-**MODIFICARI PROPUSE:**
+**Modificări Propuse:**
 
-*   **Backoff Adaptiv:** In loc de backoff fix/exponential simplu, sistemul sa primeasca feedback de la server (ex: 'retry-after' header).
-*   **Prioritizare Inteligenta:** Cererile clientilor fideli (Customer Lifetime Value mare) sa aiba prioritate la resurse in momentele de criza.
+*   **Backoff Adaptiv:** În loc de backoff fix/exponențial simplu, sistemul să primească feedback de la server (ex: 'retry-after' header).
+*   **Prioritizare Inteligentă:** Cererile clienților fideli (Customer Lifetime Value mare) să aibă prioritate la resurse în momentele de criză.
+

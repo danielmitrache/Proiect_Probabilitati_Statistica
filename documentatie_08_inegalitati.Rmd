@@ -113,3 +113,4 @@ cat("E[phi(T)] [Media costurilor]:      ", rhs, "\n")
 cat("Diferenta (Risc Subestimat):       ", rhs - lhs, "\n")
 ```
 Se observă clar că $E[\phi(T)]$ este mai mare. Dacă am dimensiona bugetul bazându-ne doar pe timpul mediu, am subestima sistematic costurile reale.
+
