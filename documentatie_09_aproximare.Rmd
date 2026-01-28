@@ -7,7 +7,7 @@ if(file.exists("R/09_aproximare.R")) source("R/09_aproximare.R")
 
 În problemele de trafic real, timpul total de procesare pe o perioadă lungă (o zi) este suma mai multor evenimente individuale (cereri). Deși timpii individuali pot avea distribuții exponențiale (asimetrice), suma lor tinde să devină normală (Gaussiană).
 
-## a) Funcția de Simulare
+## a) Funcția de simulare
 
 Următoarea funcție simulează activitatea dintr-o zi. Observați că numărul de termeni din sumă (`k_cereri`) este el însuși o variabilă aleatoare (Poisson), ceea ce face ca suma să fie una compusă.
 
@@ -54,7 +54,7 @@ if (TRUE) {
   cat("Media Empirica a sumei:    ", round(media_agregat, 2), "\n")
   cat("Deviatia Standard Empirica:", round(sd_agregat, 2), "\n")
   
-  #Vizualizare Comparativa
+  #Vizualizare și comparație
   par(mfrow = c(1, 1))
   
   #Histograma datelor agregate
@@ -67,7 +67,7 @@ if (TRUE) {
        xlab = "Latenta Totala (ms/zi)",
        ylab = "Densitate")
   
-  #Adaugam curba Teoretica Normala (linia rosie)
+  #Adaugam curba teoretica normala (linia rosie)
   curve(dnorm(x, mean = media_agregat, sd = sd_agregat), 
         add = TRUE, 
         col = "red", 
@@ -75,8 +75,8 @@ if (TRUE) {
 }
 ```
 
-### Explicație Teoretică
+### Explicație teoretică
 
-Graficul de mai sus demonstrează **Teorema Limită Centrală**. Chiar dacă latențele individuale sunt exponențiale (asimetrice), suma a ~1000 de astfel de latențe se așează pe o curbă în formă de clopot (Normală).
+Graficul de mai sus demonstrează **Teorema Limită Centrală**. Chiar dacă latențele individuale sunt exponențiale (asimetrice), suma a ~1000 de astfel de latențe se așează pe o curbă în formă de clopot (normală).
 
 Linia roșie reprezintă distribuția Normală teoretică parametrizată cu media și deviația standard empirică a datelor. Suprapunerea perfectă confirmă că putem folosi aproximarea normală pentru a face predicții despre traficul total al sistemului.

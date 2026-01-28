@@ -60,12 +60,12 @@ simuleaza_cerere_dependenta <- function(n_max = 3, p_succes = 0.7, medie_S_initi
 }
 ```
 
-## a) Simulare: Independent vs Dependent
+## a) Simulare: independent vs dependent
 
 Vom simula două scenarii pentru a analiza impactul dependenței asupra timpului total de așteptare ($T$):
 
-1.  **Scenariul Independent:** `factor_latenta = 1.0`. Eșecurile nu afectează performanța serverului pentru reîncercări.
-2.  **Scenariul Dependent:** `factor_latenta = 2.0`. După fiecare eșec, timpul mediu de răspuns se dublează (ex: 150ms -> 300ms -> 600ms).
+1.  **Scenariul independent:** `factor_latenta = 1.0`. Eșecurile nu afectează performanța serverului pentru reîncercări.
+2.  **Scenariul dependent:** `factor_latenta = 2.0`. După fiecare eșec, timpul mediu de răspuns se dublează (ex: 150ms -> 300ms -> 600ms).
 
 Parametrii comuni:
 *   $M = 10000$ simulări
@@ -89,7 +89,7 @@ timp_dependent <- replicate(M, simuleaza_cerere_dependenta(
 ))
 ```
 
-### Analiza Statistică
+### Analiza statistică
 
 Comparăm media și varianța celor două distribuții. Ne așteptăm ca în cazul dependent, varianța să crească semnificativ deoarece cazurile de eșec repetat vor genera timpi foarte lungi (outlieri extremi).
 
@@ -108,7 +108,7 @@ df_rezultate <- data.frame(
 knitr::kable(df_rezultate, digits = 2, caption = "Comparatie Statistici T")
 ```
 
-### b) Comparație: Independent vs Dependent
+### b) Comparație: independent vs dependent
 
 Vom suprapune densitățile celor două distribuții pentru a evidenția diferențele.
 
@@ -135,15 +135,15 @@ legend("topright",
 
 **Interpretare:**
 
-*   **Linia Albastră (Independent):** Este mai concentrată în stânga, indicând timpi mai mici și mai predictibili.
+*   **Linia albastră (independent):** Este mai concentrată în stânga, indicând timpi mai mici și mai predictibili.
 
-*   **Linia Roșie (Dependent):** Este mai aplatizată și se întinde mai mult spre dreapta ("heavy tail"). Aceasta cauzează o varianță mult mai mare și crește riscul ca utilizatorii să experimenteze timpi de așteptare foarte mari în momentele critice ale sistemului.
+*   **Linia roșie (dependent):** Este mai aplatizată și se întinde mai mult spre dreapta. Aceasta cauzează o varianță mult mai mare și crește riscul ca utilizatorii să experimenteze timpi de așteptare foarte mari în momentele critice ale sistemului.
 
 ## c) Concluzii privind riscul și stabilitatea sistemului
 
 Analiza comparativă demonstrează că dependența între eșecuri și latență introduce riscuri majore pentru stabilitatea sistemului:
 
-1.  **Efectul de "Bulgăre de Zăpadă":**  
+1.  **Efectul de "bulgăre de zăpadă":**  
     Într-un sistem dependent (`factor_latenta > 1`), o degradare temporară a performanței poate declanșa o buclă în care timpul de răspuns crește la nesfârșit. Un eșec inițial crește probabilitatea ca următoarele cereri să dureze mai mult, ceea ce poate duce la timeout-uri și mai multe eșecuri, amplificând latența până la blocarea completă a resurselor.
 
 2.  **Impredictibilitate și SLA (Service Level Agreements):**  
@@ -151,6 +151,6 @@ Analiza comparativă demonstrează că dependența între eșecuri și latență
 
 3.  **Recomandări:**  
     Pentru a menține sistemul stabil, este esențial să anulăm dependența. Acest lucru se poate realiza prin mecanisme precum:
-    *   **Circuit Breakers:** Oprirea temporară a cererilor către un serviciu care răspunde greu.
+    *   **Circuit breakers:** Oprirea temporară a cererilor către un serviciu care răspunde greu.
     *   **Jitter:** Adăugarea unei componente aleatoare în timpul de backoff pentru a evita sincronizarea reîncercărilor.
-    *   **Load Balancing:** Redistribuirea traficului pentru a evita supraîncărcarea unui singur nod deja lent.
+    *   **Load balancing:** Redistribuirea traficului pentru a evita supraîncărcarea unui singur nod deja lent.
