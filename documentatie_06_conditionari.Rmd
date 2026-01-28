@@ -4,7 +4,7 @@ source("R/03_evenimente.r")
 source("R/06_conditionari.R")
 ```
 
-# 6. Probabilități condiționate și condiționări (Cerința 6)
+# 7. Probabilități condiționate și condiționări (Cerința 6)
 
 Folosim aceleași variabile ca în Cerința 3:
 

@@ -4,7 +4,7 @@ set.seed(8421)
 if(file.exists("R/07_dependenta.R")) source("R/07_dependenta.R")
 ```
 
-# 8. Dependența (Cerința 7)
+# 8. Independenta vs dependenta (Cerința 7)
 
 În modelele anterioare, am presupus că timpul de răspuns pentru o încercare este independent de istoric. În realitate, un eșec poate indica o problemă sistemică (ex: supraîncărcare, congestie de rețea), ceea ce crește probabilitatea ca următoarea încercare să dureze mai mult sau să eșueze din nou. Aceasta creează o **dependență** între eșecuri și latența viitoare.
 

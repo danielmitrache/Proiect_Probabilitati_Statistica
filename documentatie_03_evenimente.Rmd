@@ -4,24 +4,20 @@ source("R/03_evenimente.R")
 library(ggplot2)
 ```
 
-# 3. Evenimente și Probabilități (Cerința 3)
 
-În această secțiune, analizăm comportamentul probabilistic al unei singure cereri care trece prin mecanismul de retry. Definim evenimentele de interes, le estimăm probabilitățile prin simulare și validăm relații teoretice între ele.
+# 4. Cereri, retry-uri și evenimente (Cerința 3)
 
-## a) Definirea Evenimentelor și a Variabilelor
+Definim evenimentele cheie asociate unei cereri care trece prin mecanismul de retry:
 
-Definim următoarele evenimente cheie asociate unei cereri:
+*   $A = \{I = 1\}$: Cererea este procesată cu succes (indiferent de numărul de încercări).
+*   $B = \{T \le t_0\}$: Cererea se încadrează în timpul limită setat de SLA (Service Level Agreement).
+*   $C = \{N \le n_0\}$: Cererea este soluționată rapid, într-un număr mic de încercări.
+*   $D = \{\text{cel puțin un eșec}\}$: Cererea a întâmpinat dificultăți (măcar un eșec), chiar dacă a reușit sau nu la final.
 
-\begin{itemize}
-    \item **A (Succes):** Cererea este procesată cu succes înainte de a epuiza numărul maxim de încercări ($I=1$).
-    \item **B (SLA):** Cererea este finalizată într-un timp total $T \le 400$ ms.
-    \item **C (Eficiență):** Cererea reușește din primele $n_0 = 2$ încercări (fără a necesita multe retry-uri).
-    \item **D (Eșec Parțial):** Cererea întâmpină cel puțin un eșec pe parcurs, deși poate reuși la final ($D=TRUE$).
-\end{itemize}
-
-### Implementarea Simulării
-
-Funcția `simuleaza_o_cerere` modelează întregul ciclu de viață al unei cereri:
+În simularea noastră, vom considera următorii parametri:
+*   $n_0 = 2$ (pragul pentru "puține încercări")
+*   $t_0 = 400$ ms (pragul de timp SLA)
+*   $M = 10000$ simulări
 
 ```{r}
 #' Simuleaza o singura cerere care poate avea mai multe retry-uri
@@ -36,9 +32,9 @@ Funcția `simuleaza_o_cerere` modelează întregul ciclu de viață al unei cere
 print(simuleaza_o_cerere)
 ```
 
-## b) Estimarea Probabilităților
+## a) Estimați empiric: $P(A), P(B), P(C), P(A \cap B), P(A \cup D)$
 
-Rulăm o simulare Monte Carlo cu $M=10000$ de cereri, având parametrii: $n_{max}=3$, $p=0.7$, $t_{SLA}=400$.
+Vom rula simularea Monte Carlo și vom calcula frecvențele relative ale apariției acestor evenimente.
 
 ```{r}
 set.seed(123)
@@ -50,62 +46,73 @@ rezultate <- replicate(M, simuleaza_o_cerere(n_max = 3, p_succes = 0.7, t_0 = t0
 df_cereri <- as.data.frame(t(rezultate))
 df_cereri[] <- lapply(df_cereri, unlist)
 
-# Estimare Probabilitati
-prob_A <- mean(df_cereri$I == 1)
-prob_B <- mean(df_cereri$T <= t0_prag)
-prob_C <- mean(df_cereri$N <= n0_prag)
-prob_inter <- mean(df_cereri$I == 1 & df_cereri$T <= t0_prag)
-prob_reuniune <- mean(df_cereri$I == 1 | df_cereri$D == TRUE)
+# Definirea logica a evenimentelor pentru fiecare simulare
+ev_A <- (df_cereri$I == 1)
+ev_B <- (df_cereri$T <= t0_prag)
+ev_C <- (df_cereri$N <= n0_prag)
+ev_D <- (df_cereri$D == TRUE)
+
+# Estimare Probabilitati (Frecvente Relative)
+prob_A <- mean(ev_A)
+prob_B <- mean(ev_B)
+prob_C <- mean(ev_C)
+prob_inter_AB <- mean(ev_A & ev_B)
+prob_reuniune_AD <- mean(ev_A | ev_D)
 
 # Afisare Tabelara
 rezultate_sim <- data.frame(
-  Eveniment = c("P(A) - Succes", "P(B) - SLA", "P(C) - Max 2 Incercari", "P(A intersect B)", "P(A reunion D)"),
-  Probabilitate = c(prob_A, prob_B, prob_C, prob_inter, prob_reuniune)
+  Eveniment = c("P(A) [Succes]", "P(B) [SLA]", "P(C) [Rapid]", "P(A inter B)", "P(A U D)"),
+  Probabilitate_Empirica = c(prob_A, prob_B, prob_C, prob_inter_AB, prob_reuniune_AD)
 )
 
 knitr::kable(rezultate_sim, digits = 4, caption = "Probabilități Empirice Estimate")
 ```
 
-### Vizualizare Grafică
-
-Prezentăm grafic probabilitățile estimate pentru o comparație vizuală rapidă.
+Grafic, aceste probabilități sunt distribuite astfel:
 
 ```{r, echo=FALSE, fig.height=4, fig.width=6, fig.align='center'}
-ggplot(rezultate_sim, aes(x = Eveniment, y = Probabilitate)) +
+ggplot(rezultate_sim, aes(x = Eveniment, y = Probabilitate_Empirica)) +
   geom_bar(stat = "identity", fill = "steelblue", width = 0.6) +
-  geom_text(aes(label = round(Probabilitate, 3)), vjust = -0.5) +
+  geom_text(aes(label = round(Probabilitate_Empirica, 3)), vjust = -0.5) +
   ylim(0, 1.1) +
   theme_minimal() +
-  labs(title = "Probabilități Estimate prin Simulare", x = "", y = "Probabilitate") +
+  labs(title = "Probabilități Estimate", x = NULL, y = "Probabilitate") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
-## c) Validarea Teoretică a Reuniunii (Inclusion-Exclusion)
+## b) Verificați numeric formulele pentru reuniune/intersecție
 
-Verificăm numeric formula probabilității reuniunii pentru evenimentele A și D:
+O proprietate fundamentală a teoriei probabilităților este **Principiul Incluziunii și Excluziunii**. Pentru două evenimente $A$ și $D$, relația este:
 $$P(A \cup D) = P(A) + P(D) - P(A \cap D)$$
 
-Această validare confirmă consistența logică a simulării.
+Verificăm dacă datele noastre respectă această relație:
 
 ```{r}
-prob_D <- mean(df_cereri$D == TRUE)
-prob_A_intersect_D <- mean(df_cereri$I == 1 & df_cereri$D == TRUE)
+# Calculam elementele componente din datele empirice
+prob_D <- mean(ev_D)
+prob_inter_AD <- mean(ev_A & ev_D) 
 
-formula_calculata <- prob_A + prob_D - prob_A_intersect_D
+# Aplicam formula teoretica folosind valorile estimate
+valoare_formula <- prob_A + prob_D - prob_inter_AD
 
-cat("P(A U D) Empiric:   ", prob_reuniune, "\n")
-cat("P(A) + P(D) - Inter:", formula_calculata, "\n")
-cat("Diferenta:          ", abs(prob_reuniune - formula_calculata), "\n")
+# Comparam cu valoarea obtinuta direct prin numarare (reuniune logica)
+cat("P(A U D) măsurat direct (reuniune logica):", prob_reuniune_AD, "\n")
+cat("P(A) + P(D) - P(A inter D) (formula):      ", valoare_formula, "\n")
+cat("Diferența (Eroare de calcul):              ", abs(prob_reuniune_AD - valoare_formula), "\n")
 ```
 
-Rezultatul confirmă validitatea simulării, diferența fiind neglijabilă (în limita preciziei floating-point).
+Diferența zero confirmă că relațiile dintre mulțimi se păstrează perfect în eșantionul nostru.
 
-## Interpretare
+## c) Explicați de ce probabilitatea empirică aproximează bine probabilitatea teoretică
 
-Rezultatele obținute evidențiază următoarele aspecte ale sistemului:
+Motivul pentru care putem folosi simularea ($M=10000$ cazuri) pentru a estima probabilitățile reale ale sistemului este **Legea Numerelor Mari (LLN)**.
 
-1.  **Fiabilitate Ridicată (P(A)):** Sistemul are o rată mare de succes global, datorită mecanismului de retry care compensează eșecurile individuale.
-2.  **Impactul SLA (P(B)):** Probabilitatea de a respecta SLA-ul este, în general, mai mică decât probabilitatea simplă de succes, deoarece retry-urile introduc latență suplimentară.
-3.  **Costul Performanței:** Diferența dintre $P(C)$ și $P(A)$ arată câte cereri necesită efort suplimentar (mai mult de 2 încercări) pentru a reuși.
-4.  **Coerența Modelului:** Validarea relației $P(A \cup D)$ demonstrează că simularea păstrează corect structura probabilistică a evenimentelor dependente.
+Această lege afirmă că, pe măsură ce dimensiunea eșantionului ($M$) crește, media empirică (frecvența relativă a observării unui eveniment) converge în probabilitate către media teoretică (probabilitatea reală a evenimentului).
+
+Formal, dacă $X_1, X_2, ..., X_M$ sunt variabile aleatoare independente și identic distribuite (i.i.d.) care indică apariția unui eveniment (1 dacă apare, 0 altfel), atunci media lor aritmetică $\bar{X}_M$ satisface:
+$$ \lim_{M \to \infty} P(|\bar{X}_M - \mu| < \epsilon) = 1 $$
+Unde $\mu$ este probabilitatea teoretică.
+
+În cazul nostru, $M=10000$ este un număr suficient de mare pentru ca fluctuațiile statistice să se "anuleze" reciproc, rezultând o estimare care este foarte apropiată de valoarea "adevărată" pe care am obține-o prin calcul analitic exact. Eroarea de estimare scade proporțional cu $1/\sqrt{M}$.
+
 

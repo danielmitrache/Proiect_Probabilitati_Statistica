@@ -78,6 +78,7 @@ Aplicăm un test \\(\\chi^2\\) pe tabelul de contingență (cu p-value simulat).
 
 ```{r}
 test_ind <- chisq.test(tab_NF, simulate.p.value = TRUE, B = 2000)
+test_ind
 ```
 
 ## d) Vizualizare (heatmap + mosaicplot) și interpretare
