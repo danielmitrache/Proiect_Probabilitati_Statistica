@@ -1,0 +1,1784 @@
+---
+title: "Analiza probabilistică a performanței unui serviciu online"
+author: 
+  - "Mitrache Antonie Daniel"
+  - "Folea Alexandru"
+  - "Ene Andrei Tudor"
+  - "Smadu Andrei"
+date: "Ianuarie 2026"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if(file.exists("R/01_trafic.R")) source("R/01_trafic.R")
+if(file.exists("R/02_latenta.R")) source("R/02_latenta.R")
+if(file.exists("R/03_evenimente.R")) source("R/03_evenimente.R")
+if(file.exists("R/04_bivarianta_NF.R")) source("R/04_bivarianta_NF.R")
+if(file.exists("R/05_bivarianta_NT.R")) source("R/05_bivarianta_NT.R")
+if(file.exists("R/06_conditionari.R")) source("R/06_conditionari.R")
+if(file.exists("R/07_dependenta.R")) source("R/07_dependenta.R")
+if(file.exists("R/08_inegalitati.R")) source("R/08_inegalitati.R")
+if(file.exists("R/09_aproximare.R")) source("R/09_aproximare.R")
+if(file.exists("R/10_churn.R")) source("R/10_churn.R")
+if(file.exists("R/11_impact_economic.R")) source("R/11_impact_economic.R")
+if(file.exists("R/12_vizualizare_statistica.R")) source("R/12_vizualizare_statistica.R")
+```
+
+# 1. Descrierea Problemei
+
+Scopul acestui proiect este modelarea unui sistem IT supus unui trafic aleator. Vom analiza relația dintre încărcarea sistemului (numărul de clienți), performanța tehnică (timpi de răspuns, erori) și impactul economic (profit vs pierderi).
+
+Proiectul simulează scenarii realiste precum: retry-uri automate, mecanisme de backoff și comportamentul utilizatorilor (churn).
+
+------------------------------------------------------------------------
+
+Deoarece acest proiect se bazează pe simulări Monte Carlo și generare de variabile aleatoare, rezultatele pot varia la fiecare rulare a codului. 
+
+Pentru a asigura **reproductibilitatea** exactă a rezultatelor prezentate în acest raport (grafice, valori numerice, estimări), vom seta un seed global la începutul execuției:
+
+```{r}
+set.seed(8421)
+```
+
+# 2. Modelarea Traficului Zilnic (Cerința 1)
+
+## a) Modelarea Kd folosind doua distributii discrete
+
+Pentru a modela numărul de vizitatori zilnici ($K_d$), am utilizat **Distribuția Poisson** si **Distributia Binomiala**, creand o functie care simuleaza traficul pe un numar de zile dat ca parametru, alaturi de distributia folosita si parametrii specifici acesteia:
+
+```{r}
+#' Simuleaza traficul zilnic (Numarul de clienti Kd)
+#' @param n_zile Numarul de zile pentru simulare
+#' @param metoda Tipul distributiei: "poisson" sau "binomiala"
+#' @param lambda Media estimata a clientilor (pentru Poisson)
+#' @param n_max Capacitatea maxima teoretica (pentru Binomial)
+#' @param p Probabilitatea ca un potential client sa fie activ (pentru Binomial)
+simuleaza_trafic <- function(n_zile, metoda = "poisson", lambda = 1000, n_max = 2000, p = 0.5) {
+  trafic <- numeric(n_zile)
+  if (metoda == "poisson") {
+    trafic <- rpois(n = n_zile, lambda = lambda)
+  } else if (metoda == "binomiala") {
+    trafic <- rbinom(n = n_zile, size = n_max, prob = p)
+  } else {
+    stop("Metoda necunoscuta! Alege 'poisson' sau 'binomiala'.")
+  }
+  return(trafic)
+}
+```
+
+## b) Generarea unor esantioane care sa reprezinte traficul zilnic pe cativa ani si reprezentarea histogramelor. Interpretarea comparativa a histogramelor obtiune pe luni si ani.
+
+Vom folosi urmatoarele functii:
+
+```{r}
+#' Construieste un data frame (un tabel) in care sunt reprezentate ambele distributii
+#' si fiecare valoare are asociata o un an, o luna si o zi
+#' @param n_zile Numarul de zile pentru simulare
+#' @param metoda Tipul distributiei: "poisson" sau "binomiala"
+#' @param lambda Media estimata a clientilor (pentru Poisson)
+#' @param n_max Capacitatea maxima teoretica (pentru Binomial)
+#' @param p Probabilitatea ca un potential client sa fie activ (pentru Binomial)
+#' @param data_start Data de la care incepe simularea, data_final e implicit data_start + n_zile
+df_trafic_zile <- function(n_zile, lambda = 1000, n_max = 2000, p = 0.5, data_start = "2026-01-01") {
+  trafic_poisson <- simuleaza_trafic(n_zile, metoda="poisson", lambda=lambda)
+  trafic_binomial <- simuleaza_trafic(n_zile, metoda="binomiala", n_max=n_max, p=p)
+  
+  data_start <- as.Date(data_start)
+  vector_date <- seq(from = data_start, by = "day", length.out = n_zile)
+  
+  # Cream un Data Frame pentru a putea filtra usor
+  df <- data.frame(
+    valoare_poisson  = trafic_poisson,
+    valoare_binomial = trafic_binomial,
+    an               = format(vector_date, "%Y"),
+    luna             = format(vector_date, "%m"),
+    zi               = format(vector_date, "%d")
+  )
+  
+  return(df)
+}
+
+
+#' Functia deseneaza 2 histograme, una pentru valorile traficului modelat folosind poisson iar a doua pentru valorile traficului modelat folosint binomiala
+#' @param df_trafic_zile dataframe returnat de functia df_trafic_zile
+comparatie_histograme_pois_bin <- function(df_trafic_zile) {
+  par(mfrow = c(1, 2)) # Impartim ecranul in 2
+  
+  hist(df_trafic_zile$valoare_poisson,
+       breaks = 30,
+       probability = TRUE,
+       col = "skyblue",
+       border = "white",
+       main = "Model Poisson\n(Trafic Nerestrictionat)",
+       xlab = "Nr. Clienti / Zi",
+       ylab = "Densitate / Probabilitate") 
+  
+  hist(df_trafic_zile$valoare_binomial,
+       breaks = 30,
+       probability = TRUE,
+       col = "lightgreen",
+       border = "white",
+       main = "Model Binomial\n(Capacitate Limitată)",
+       xlab = "Nr. Clienti / Zi",
+       ylab = "Densitate / Probabilitate")
+  
+  par(mfrow = c(1, 1))
+}
+
+
+#' Deseneaza histograma traficului pentru o luna specifica
+#'
+#' Aceasta functie filtreaza datele pentru o anumita luna si un anumit an,
+#' apoi afiseaza histograma distributiei selectate. Utila pentru a observa
+#' variabilitatea pe esantioane mici (n ~ 30).
+#'
+#' @param df_trafic_zile Data frame-ul generat de df_trafic_zile()
+#' @param luna Numarul lunii ca string (ex: "01", "12")
+#' @param an Anul din care extragem luna (ex: "2026")
+#' @param distributie Tipul coloanei de desenat: "poisson" sau "binomiala"
+#' @return Nu returneaza nimic, doar genereaza graficul.
+histograma_luna_distrib <- function(df_trafic_zile, 
+                                    luna = "01", 
+                                    an = "2026",
+                                    distributie = "poisson") {
+  
+  # 1. Filtram datele (Doar luna si anul cerut)
+  date_filtrate <- df_trafic_zile[df_trafic_zile$luna == luna & df_trafic_zile$an == an, ]
+  
+  # 2. Selectam coloana corecta pe baza parametrului 'distributie'
+  if (distributie == "poisson") {
+    valori <- date_filtrate$valoare_poisson
+    titlu_model <- "Poisson"
+  } else {
+    valori <- date_filtrate$valoare_binomial
+    titlu_model <- "Binomiala"
+  }
+  
+  # 3. Desenam Histograma
+  hist(valori,
+       breaks = 10, 
+       probability = TRUE,
+       col = "gold",
+       border = "white",
+       main = paste0("Model ", titlu_model, " - Luna ", luna, "/", an),
+       xlab = "Nr. Clienti / Zi",
+       ylab = "Frecventa")
+}
+
+
+#' Deseneaza histograma traficului pentru un an intreg
+#'
+#' Aceasta functie filtreaza datele pentru un an specific si afiseaza
+#' histograma. Utila pentru a observa stabilitatea distributiei pe termen lung.
+#'
+#' @param df_trafic_zile Data frame-ul generat de df_trafic_zile()
+#' @param an Anul dorit ca string (ex: "2026")
+#' @param distributie Tipul coloanei de desenat: "poisson" sau "binomiala"
+#' @return Nu returneaza nimic, doar genereaza graficul.
+histograma_an_distrib <- function(df_trafic_zile,
+                                  an = "2026",
+                                  distributie = "poisson") {
+  
+  # 1. Filtram datele (Doar anul cerut)
+  date_filtrate <- df_trafic_zile[df_trafic_zile$an == an, ]
+  
+  # 2. Selectam coloana
+  if (distributie == "poisson") {
+    valori <- date_filtrate$valoare_poisson
+    titlu_model <- "Poisson"
+  } else {
+    valori <- date_filtrate$valoare_binomial
+    titlu_model <- "Binomiala"
+  }
+  
+  # 3. Desenam Histograma
+  hist(valori,
+       breaks = 30,
+       probability = TRUE,
+       col = "orange",
+       border = "white",
+       main = paste0("Model ", titlu_model, " - Anul ", an),
+       xlab = "Nr. Clienti / Zi",
+       ylab = "Densitate")
+}
+```
+
+Aceste functii ne ajuta la compararea traficului din orice luna cu traficul din orice an, folosind oricare dintre cele doua distributii, codul devenind astfel reutilizabil.
+
+Sa generam prin simulare un esantion de 3 ani (3 \* 365 zile).
+
+Vom considera urmatori parametrii pentru distributii: $\lambda$ = 1000 n = 2000 p = 0.5
+
+```{r}
+trafic_3_ani <- df_trafic_zile(n_zile = 3 * 365)
+
+comparatie_histograme_pois_bin(trafic_3_ani)
+```
+
+Acum vom reprezenta histograma pentru fiecare an individual.
+
+
+Mai intai folosind disributia Binomiala:
+
+```{r}
+par(mfrow = c(1, 3))
+
+# Anul 1
+histograma_an_distrib(trafic_3_ani, an = "2026", distributie = "binomiala")
+
+# Anul 2
+histograma_an_distrib(trafic_3_ani, an = "2027", distributie = "binomiala")
+
+# Anul 3
+histograma_an_distrib(trafic_3_ani, an = "2028", distributie = "binomiala")
+
+par(mfrow = c(1, 1))
+```
+
+Acum folosind distributia Poisson:
+
+```{r}
+par(mfrow = c(1, 3))
+
+# Anul 1
+histograma_an_distrib(trafic_3_ani, an = "2026", distributie = "poisson")
+
+# Anul 2
+histograma_an_distrib(trafic_3_ani, an = "2027", distributie = "poisson")
+
+# Anul 3
+histograma_an_distrib(trafic_3_ani, an = "2028", distributie = "poisson")
+
+par(mfrow = c(1, 1))
+```
+
+### Comparatie Lună vs. An
+
+Vom analiza diferența dintre distribuția traficului pe un interval scurt (o lună) și pe un interval lung (un an).
+
+Poisson:
+
+```{r fig.width=10, fig.height=5}
+par(mfrow = c(1, 2))
+
+# Grafic 1: Doar Luna Ianuarie 2026 (Esantion Mic, n=31)
+histograma_luna_distrib(trafic_3_ani, 
+                        luna = "01", 
+                        an = "2026", 
+                        distributie = "poisson")
+
+# Grafic 2: Tot Anul 2026 (Esantion Mare, n=365)
+histograma_an_distrib(trafic_3_ani, 
+                      an = "2026", 
+                      distributie = "poisson")
+
+par(mfrow = c(1, 1))
+```
+
+
+Binomiala:
+```{r fig.width=10, fig.height=5}
+par(mfrow = c(1, 2))
+
+# Grafic 1: Doar Luna Ianuarie 2026 (Esantion Mic, n=31)
+histograma_luna_distrib(trafic_3_ani, 
+                        luna = "01", 
+                        an = "2026", 
+                        distributie = "binomiala")
+
+# Grafic 2: Tot Anul 2026 (Esantion Mare, n=365)
+histograma_an_distrib(trafic_3_ani, 
+                      an = "2026", 
+                      distributie = "binomiala")
+
+par(mfrow = c(1, 1))
+```
+**Interpretarea Histogramei Comparativă:**
+
+1.  **Analiza Lunară (Eșantion Mic, $n \approx 30$):**
+    * În graficul din stânga, observăm că distribuția este **neregulată** și prezintă "goluri" sau bare de înălțimi inegale care nu par să urmeze o formă matematică clară.
+    * Aceasta se datorează dimensiunii reduse a eșantionului. Variabilitatea naturală (zgomotul statistic) are un impact puternic, iar frecvența empirică nu a avut timp să conveargă către probabilitatea teoretică.
+    * *Concluzie practică:* O singură lună de date poate fi înșelătoare pentru a trage concluzii generale despre comportamentul sistemului.
+
+2.  **Analiza Anuală (Eșantion Mare, $n = 365$):**
+    * În graficul din dreapta, forma histogramei devine mult mai netedă și simetrică, semănând vizibil cu un **Clopot (Gauss)**.
+    * Acest fenomen ilustrează **Legea Numerelor Mari**: pe măsură ce numărul de observații crește, distribuția empirică (ce măsurăm) converge către distribuția teoretică (modelul matematic).
+    * Media empirică se stabilizează în jurul valorii teoretice ($\lambda = 1000$), iar outlierii (valorile extreme) devin mai puțin semnificativi procentual.
+
+## c) Estimarea empirica a mediei si a variantei pe fiecare an si compararea cu valorile teoretice
+
+Vom folosi urmatoarea functie:
+
+```{r}
+#' Calculeaza tabelul comparativ (Empiric vs Teoretic)
+#' 
+#' @param df_trafic_zile Data frame-ul cu datele simulate
+#' @param distributie "poisson" sau "binomiala"
+#' @param lambda Parametrul lambda (pt Poisson)
+#' @param n_max Parametrul n (pt Binomiala)
+#' @param p Parametrul p (pt Binomiala)
+df_estimari_empirice <- function(df_trafic_zile, 
+                                 distributie = "poisson",
+                                 lambda = 1000, 
+                                 n_max = 2000, 
+                                 p = 0.5) {
+  
+  # 1. Selectam coloana de date si calculam Teoria
+  if (distributie == "poisson") {
+    # Selectam coloana specifica Poisson
+    valori_observate <- df_trafic_zile$valoare_poisson
+    
+    # Formule teoretice Poisson
+    media_teo <- lambda
+    varianta_teo <- lambda
+    
+  } else {
+    # Selectam coloana specifica Binomiala
+    valori_observate <- df_trafic_zile$valoare_binomial
+    
+    # Formule teoretice Binomiala
+    media_teo <- n_max * p
+    varianta_teo <- n_max * p * (1 - p)
+  }
+  
+  # Cream un mic data frame temporar doar pentru agregare
+  df_temp <- data.frame(
+    an = df_trafic_zile$an,
+    valoare = valori_observate
+  )
+  
+  # 2. Calculam Statisticile EMPIRICE (din date) pe ani
+  # aggregate returneaza un tabel cu coloanele "an" si "valoare"
+  medii_empirice <- aggregate(valoare ~ an, data = df_temp, FUN = mean)
+  variante_empirice <- aggregate(valoare ~ an, data = df_temp, FUN = var)
+  
+  # 3. Construim Tabelul Final
+  tabel_comparativ <- data.frame(
+    Anul = medii_empirice$an,
+    
+    Media_Empirica = round(medii_empirice$valoare, 2),
+    Media_Teoretica = media_teo,
+    
+    Varianta_Empirica = round(variante_empirice$valoare, 2),
+    Varianta_Teoretica = varianta_teo
+  )
+  
+  return(tabel_comparativ)
+}
+```
+
+Vom compara mai intai valorile empirice cu cele teoretice folosind distributia Binomiala:
+
+```{r}
+df_estimari_empirice(trafic_3_ani, distributie = "binomiala")
+```
+
+Iar apoi folosind distributia Poisson:
+
+```{r}
+df_estimari_empirice(trafic_3_ani, distributie = "poisson")
+```
+
+## d) Interpretarea diferentelor dintre modele (trafic redus vs plafonat)
+
+Vom folosi urmatoarea functie ajutatoare:
+```{r}
+#' Functie ajutatoare la compararea celor doua modele - Poisson si Binomiala
+#' @param df_trafic_zile variabila returnata de functia df_trafic_zile
+comparatie_densitati_suprapuse <- function(df_trafic_zile) {
+  
+  # Calculam densitatile (forma curbelor)
+  dens_pois <- density(df_trafic_zile$valoare_poisson)
+  dens_bin  <- density(df_trafic_zile$valoare_binomial)
+  
+  # Calculam limitele pentru a incapea ambele
+  limita_x <- range(c(dens_pois$x, dens_bin$x))
+  limita_y <- range(c(dens_pois$y, dens_bin$y))
+  
+  # Desenam prima curba (Poisson)
+  plot(dens_pois, 
+       xlim = limita_x, ylim = limita_y,
+       col = "blue", lwd = 3,
+       main = "Comparatie Directa: Poisson vs Binomial",
+       xlab = "Nr. Clienti / Zi", ylab = "Probabilitate")
+  
+  # Umplem suprafata Poisson cu albastru transparent
+  polygon(dens_pois, col = rgb(0, 0, 1, 0.2), border = NA)
+  
+  # Adaugam a doua curba (Binomiala) peste prima
+  lines(dens_bin, col = "forestgreen", lwd = 3)
+  
+  # Umplem suprafata Binomiala cu verde transparent
+  polygon(dens_bin, col = rgb(0, 0.5, 0, 0.2), border = NA)
+  
+  # Legenda
+  legend("topright", 
+         legend = c("Poisson", "Binomial"),
+         col = c("blue", "forestgreen"), 
+         lwd = 3, fill = c(rgb(0,0,1,0.2), rgb(0,0.5,0,0.2)))
+  
+  grid()
+}
+```
+
+Deși ambele distribuții au fost parametrizate pentru a avea aceeași medie teoretică ($E[X] \approx 1000$ clienți/zi), analiza comparativă relevă diferențe fundamentale de stabilitate:
+
+**1. Dispersia (Varianța):**
+
+* **Modelul Poisson** (Trafic Nerestricționat) are varianța egală cu media ($Var = \lambda = 1000$). Aceasta indică o fluctuație naturală mare; într-o zi proastă putem avea mult sub 1000 de clienți, iar într-o zi bună mult peste, fără o limită superioară strictă.
+
+* **Modelul Binomial** (Trafic Plafonat) are varianța mult mai mică. Conform formulei $Var = n \cdot p \cdot (1-p) = 2000 \cdot 0.5 \cdot 0.5 = 500$.
+
+* **Concluzie:** Varianța modelului Binomial este la jumătate față de cel Poisson ($500 < 1000$). Asta înseamnă că traficul Binomial este de două ori mai "concentrat" în jurul mediei.
+
+**2. Interpretare Vizuală:**
+
+* Pe grafic, histograma **Binomială (Verde)** este mai "înaltă" și mai "îngustă". Valorile sunt strânse în intervalul $[950, 1050]$.
+
+* Histograma **Poisson (Albastră)** este mai "lată" și mai "joasă". Cozile distribuției se întind mai mult, existând o probabilitate mai mare de a întâlni valori extreme (departe de medie).
+
+```{r}
+comparatie_densitati_suprapuse(trafic_3_ani)
+```
+
+**3. Implicații pentru Sistemul IT:**
+
+* **Scenariul Poisson** este mai riscant. Deoarece traficul nu este plafonat de un număr finit de utilizatori ($N_{max}$), pot apărea "vârfuri" neașteptate care să suprasolicite serverele.
+
+* **Scenariul Binomial** este mai predictibil. Existența unui bazin finit de clienți ($N_{max}=2000$) acționează ca un amortizor natural al fluctuațiilor. Este un model specific aplicațiilor interne (corporate) sau pe bază de abonament limitat, unde dimensionarea serverelor este mai simplă și mai eficientă economic.
+
+# 3. Modelarea timpilor de raspuns (Cerinta 2)
+
+## a) Modelarea S folosind o distributie asimetrica si una simetrica
+
+Pentru a modela timpul de procesare $S$ (latenta), am utilizat 2 ipoteze:
+
+1.  **Distribuție Exponențială:** Presupune că majoritatea cererilor sunt rapide, dar există câteva foarte lente ("coadă lungă"). Este modelul clasic pentru servere (M/M/1).
+2.  **Distribuție Normală:** Presupune că timpii sunt simetrici în jurul unei medii, tipic pentru procese deterministe cu mici variații.
+
+```{r}
+#' Simuleaza timpii de raspuns (S)
+#' @param n Numarul de cereri (esantionul)
+#' @param tip Tipul distributiei: "exponentiala" sau "normala"
+#' @param medie Timpul mediu dorit (ex: 200 ms) atat pentru distributia exponentiala cat si cea normala
+#' @param sd Deviatia standard pentru distributia normala
+simuleaza_latente <- function(n, tip = "exponentiala", medie = 200, sd = 50) {
+  if (tip == "exponentiala") {
+    rate_param <- 1 / medie
+    valori <- rexp(n, rate = rate_param)
+  } else if (tip == "normala") {
+    valori <- rnorm(n, mean = medie, sd = sd)
+    
+    # Timpul nu poate fi negativ. Orice valoare < 1ms devine 1ms.
+    valori <- pmax(valori, 1)
+  } else {
+    stop("Tip distributie necunoscut! Alege 'exponentiala' sau 'normala'.")
+  }
+  
+  return(valori)
+}
+```
+
+## b) Construirea histogramelor pentru S si suprapunerea densitatilor teoretice
+
+Vom folosi urmatoarea rezolvare: 
+
+```{r}
+#' Vizualizeaza histograma si densitatea teoretica
+#' @param vector_latente Datele generate de functia simuleaza_latente
+#' @param tip "exponentiala" sau "normala"
+#' @param medie Media folosita la generare (pt curba teoretica)
+#' @param sd Deviatia standard (doar pt normala)
+vizualizeaza_latente <- function(vector_latente, tip = "exponentiala", medie = 200, sd = 50) {
+  # Desenam Histograma
+  if (tip == "exponentiala") {
+    titlu <- "Latente: Distributie Exponentiala (Asimetrică)"
+    culoare <- "wheat"
+  } else {
+    titlu <- "Latente: Distributie Normala (Simetrica)"
+    culoare <- "lightblue"
+  }
+  
+  hist(vector_latente, 
+       probability = TRUE, 
+       breaks = 30, 
+       col = culoare, 
+       border = "white",
+       main = titlu,
+       xlab = "Timp de Răspuns (ms)",
+       ylab = "Densitate")
+  
+  # Suprapunem densitatea teoretica (formula matematica)
+
+  if (tip == "exponentiala") {
+    # Functia de densitate exponentiala este dexp
+    curve(dexp(x, rate = 1/medie), 
+          col = "red", lwd = 3, add = TRUE)
+  } else {
+    # Functia de densitate normala este dnorm
+    curve(dnorm(x, mean = medie, sd = sd), 
+          col = "darkblue", lwd = 3, add = TRUE)
+  }
+}
+
+```
+
+
+Vom considera urmatorii parametrii pentru distributii:
+media = 200
+$\sigma$ = 50
+ 
+Vom simula latentele pentru 10000 de request-uri:
+```{r}
+latente_exp <- simuleaza_latente(10^4, tip="exponentiala")
+latente_norm <- simuleaza_latente(10^4, tip="normala")
+```
+
+Vizualizarea histogramei si a densitatii teoretice pentru modelul exponential:
+```{r}
+vizualizeaza_latente(latente_exp, "exponentiala")
+```
+
+Si pentru cel normal:
+```{r}
+vizualizeaza_latente(latente_norm, "normala")
+```
+
+## c) Calculul valorilor descriptive (Media, Varianta, Mediana, Modul) si interpretarea lor
+
+Vom folosi urmatoarea functie:
+
+```{r}
+#' Calculeaza statisticile descriptive (Media, Varianta, Mediana, Modul)
+#' si returneaza un tabel comparativ.
+#'
+#' @param v_exp Vectorul cu datele distributiei Exponentiale
+#' @param v_norm Vectorul cu datele distributiei Normale
+#' @return Un Data Frame cu statisticile rotunjite la 2 zecimale
+comparatie_statistica_latente <- function(v_exp, v_norm) {
+  
+  # Pentru variabile continue, Modul este varful curbei de densitate
+  calculeaza_modul <- function(v) {
+    d <- density(v)
+    return(d$x[which.max(d$y)])
+  }
+  
+  # Calculam statisticile pentru exponentiala
+  stats_exp <- c(
+    Media    = mean(v_exp),
+    Varianta = var(v_exp),
+    Mediana  = median(v_exp),
+    Modul    = calculeaza_modul(v_exp)
+  )
+  
+  # Calculam statisticile pentru normala
+  stats_norm <- c(
+    Media    = mean(v_norm),
+    Varianta = var(v_norm),
+    Mediana  = median(v_norm),
+    Modul    = calculeaza_modul(v_norm)
+  )
+  
+  # Construim Data Frame-ul final
+  df_stat <- data.frame(
+    Distributia = c("Exponentiala", "Normala"),
+    Media    = c(stats_exp["Media"],    stats_norm["Media"]),
+    Varianta = c(stats_exp["Varianta"], stats_norm["Varianta"]),
+    Mediana  = c(stats_exp["Mediana"],  stats_norm["Mediana"]),
+    Modul    = c(stats_exp["Modul"],    stats_norm["Modul"])
+  )
+  
+  # Rotunjim valorile numerice pentru un aspect curat in tabel
+  # (Coloanele 2 pana la 5 sunt numerice)
+  df_stat[, 2:5] <- round(df_stat[, 2:5], 2)
+  
+  return(df_stat)
+}
+```
+
+Rezultat:
+
+```{r}
+comparatie_statistica_latente(latente_exp, latente_norm)
+```
+
+Pe baza tabelului de mai sus, putem trage următoarele concluzii despre natura celor două distribuții:
+
+
+**1. Distribuția Normală (Modelul Simetric)**
+
+* **Centralitate:** Valorile pentru **Medie** ($\approx 199$), **Mediană** ($\approx 198$) și **Mod** ($\approx 190$) sunt foarte apropiate unele de altele. Această coincidență este specifică distribuțiilor simetrice (Clopotul lui Gauss), unde majoritatea datelor se aglomerează în jurul centrului.
+* **Varianța:** Valoarea obținută ($\approx 2434$) este consistentă cu deviația standard teoretică aleasă ($SD=50 \Rightarrow Var=2500$).
+* **Concluzie:** Acest model descrie un sistem **stabil și predictibil**, unde timpul de răspuns variază puțin și egal în ambele direcții față de medie.
+
+**2. Distribuția Exponențială (Modelul Asimetric)**
+
+* **Centralitate:** Observăm o discrepanță majoră între indicatori: $Mod < Mediană < Medie$ ($40 < 137 < 198$).
+    * **Modul scăzut ($\approx 40$):** Indică faptul că, cel mai frecvent, cererile sunt procesate foarte rapid (sub medie).
+    * **Mediana ($\approx 137$):** Arată că 50% dintre cereri sunt finalizate în sub 137ms.
+    * **Media ridicată ($\approx 198$):** Este trasă în sus de valorile extreme (coada distribuției).
+* **Varianța:** Este foarte mare ($\approx 38.791$), mult superioară celei normale.
+* **Concluzie:** Acest model descrie un sistem **realist, dar instabil**, caracterizat de o "coadă lungă" (*Long Tail*). Deși majoritatea cererilor sunt rapide, există un risc semnificativ de latențe foarte mari care destabilizează media.
+
+## d) Diferenta dintre medie si mediana in contextul latentelor
+
+Analizând tabelul statistic generat anterior, observăm o distincție clară între cele două modele:
+
+
+**1. Cazul Distribuției Normale (Procese Stabile)**
+
+* **Observație:** Media ($\approx 199$ ms) este aproape identică cu Mediana ($\approx 198$ ms).
+* **Interpretare:** Într-un sistem stabil, timpul mediu de răspuns reflectă corect experiența tipică a utilizatorului. 50% dintre cereri sunt mai rapide de 199ms, iar 50% sunt mai lente, distribuția fiind simetrică.
+
+**2. Cazul Distribuției Exponențiale (Sisteme Realiste / Queuing)**
+
+* **Observație:** Există o diferență majoră între Medie ($\approx 198$ ms) și Mediană ($\approx 137$ ms). Media este cu aproximativ **45% mai mare** decât mediana.
+* **Interpretare:** Aceasta este proprietatea de **"Long Tail"** (Coadă Lungă).
+    * **Mediana (137 ms):** Ne spune că *majoritatea* utilizatorilor (50%+) au o experiență foarte bună, primind răspuns rapid.
+    * **Media (198 ms):** Este trasă în sus de câteva cereri "ghinioniste" care durează foarte mult (outlieri).
+* **Concluzie de Business:** Pentru un server web, **Mediana** este un indicator mai bun al satisfacției generale ("utilizatorul obișnuit"), în timp ce **Media** ascunde faptul că mulți utilizatori au o experiență rapidă, dar este sensibilă la problemele grave de latență.
+
+
+# 4. Evenimente și Probabilități (Cerința 3)
+
+În această secțiune, analizăm comportamentul probabilistic al unei singure cereri care trece prin mecanismul de retry. Definim următoarele evenimente cheie:
+\begin{itemize}
+    \item **A (Succes):** Cererea este procesată cu succes înainte de a epuiza numărul maxim de încercări.
+    \item **B (SLA):** Cererea este finalizată într-un timp total $T \le 400$ ms.
+    \item **C (Eficiență):** Cererea reușește din primele $n_0 = 2$ încercări.
+    \item **D (Eșec Parțial):** Cererea întâmpină cel puțin un eșec pe parcurs, deși poate reuși la final.
+\end{itemize}
+
+## Implementarea Simulării
+
+Funcția `simuleaza_o_cerere` modelează întregul ciclu de viață al unei cereri:
+
+```{r}
+#' Simuleaza o singura cerere care poate avea mai multe retry-uri
+#' 
+#' @param n_max Numarul maxim de incercari permise (retry-uri + prima incercare)
+#' @param p_succes Probabilitatea de succes a unei singure incercari (U_i)
+#' @param t_0 Pragul de timp pentru respectarea SLA (Service Level Agreement)
+#' @param medie_S Timpul mediu de procesare pentru o singura incercare (S_i)
+#' @param backoff_fix Timpul de asteptare fix adaugat intre doua reincercari (B_i)
+#' 
+#' @return O lista continand indicatori de succes, timp si numar de incercari
+print(simuleaza_o_cerere)
+```
+
+## Estimarea Probabilităților
+
+Rulăm o simulare Monte Carlo cu $M=10000$ de cereri, având parametrii: $n_{max}=3$, $p=0.7$, $t_{SLA}=400$.
+
+```{r}
+M <- 10000    
+n0_prag <- 2  
+t0_prag <- 400 
+
+rezultate <- replicate(M, simuleaza_o_cerere(n_max = 3, p_succes = 0.7, t_0 = t0_prag))
+df_cereri <- as.data.frame(t(rezultate))
+df_cereri[] <- lapply(df_cereri, unlist)
+
+# Estimare Probabilitati
+prob_A <- mean(df_cereri$I == 1)
+prob_B <- mean(df_cereri$T <= t0_prag)
+prob_C <- mean(df_cereri$N <= n0_prag)
+prob_inter <- mean(df_cereri$I == 1 & df_cereri$T <= t0_prag)
+prob_reuniune <- mean(df_cereri$I == 1 | df_cereri$D == TRUE)
+
+# Afisare Tabelara
+rezultate_sim <- data.frame(
+  Eveniment = c("P(A) - Succes", "P(B) - SLA", "P(C) - Max 2 Incercari", "P(A intersect B)", "P(A reunion D)"),
+  Probabilitate = c(prob_A, prob_B, prob_C, prob_inter, prob_reuniune)
+)
+
+knitr::kable(rezultate_sim, digits = 4, caption = "Probabilități Empirice Estimate")
+```
+
+## Verificarea Formulelor
+
+Verificăm numeric formula probabilității reuniunii: $P(A \cup D) = P(A) + P(D) - P(A \cap D)$.
+
+```{r}
+prob_D <- mean(df_cereri$D == TRUE)
+prob_A_intersect_D <- mean(df_cereri$I == 1 & df_cereri$D == TRUE)
+
+formula_calculata <- prob_A + prob_D - prob_A_intersect_D
+
+cat("P(A U D) Empiric:   ", prob_reuniune, "\n")
+cat("P(A) + P(D) - Inter:", formula_calculata, "\n")
+cat("Diferenta:          ", abs(prob_reuniune - formula_calculata), "\n")
+```
+
+Rezultatul confirmă validitatea simulării, diferența fiind neglijabilă (în limita preciziei floating-point).
+
+
+
+# 5. Variabile aleatoare bidimensionale discrete (Cerința 4)
+În această secțiune considerăm variabila bidimensională **(N, F)**, unde:
+
+* **N** = numărul total de încercări (retry-uri + prima încercare)
+* **F** = numărul de eșecuri (failures) produse pe parcursul unei cereri
+
+**Observație importantă:** în modelul de retry, **F nu este o variabilă independentă față de N**, deoarece este determinată de relația logică dintre **N** și indicatorul de succes final **I**:
+
+* Dacă cererea reușește la încercarea $N$ ($I=1$) $\Rightarrow$ au existat $N-1$ eșecuri înainte, deci $F=N-1$.
+* Dacă cererea eșuează complet ($I=0$) $\Rightarrow$ toate încercările sunt eșecuri, deci $F=N$.
+
+## Implementarea simulării (N, F)
+
+Funcția `simuleaza_NF_din_ex3` este un *wrapper* peste `simuleaza_o_cerere` (definită la Cerința 3) și construiește coloana **F** plecând de la (N, I).
+
+```{r}
+print(simuleaza_NF_din_ex3)
+```
+
+## a) Distribuția comună empirică
+
+Simulăm un eșantion mare \\(M=100000\\) și estimăm distribuția comună prin frecvențe relative.
+
+```{r}
+M <- 100000
+n_max <- 3
+p_succes <- 0.7
+t_0 <- 400
+medie_S <- 150
+backoff_fix <- 50
+
+df_NF <- simuleaza_NF_din_ex3(
+  M = M, n_max = n_max, p_succes = p_succes,
+  t_0 = t_0, medie_S = medie_S, backoff_fix = backoff_fix
+)
+
+tab_NF <- table(df_NF$N, df_NF$F)       # frecvente absolute
+prob_NF <- prop.table(tab_NF)           # probabilitati empirice
+
+knitr::kable(tab_NF, caption = "Distribuția comună (frecvențe) pentru (N, F)")
+knitr::kable(round(prob_NF, 4), caption = "Distribuția comună empirică P(N, F)")
+```
+
+## b) Distribuțiile marginale
+
+Marginalele se obțin prin sumare pe linii/coloane ale distribuției comune.
+
+```{r}
+marg_N <- margin.table(prob_NF, 1)  # P(N=n)
+marg_F <- margin.table(prob_NF, 2)  # P(F=f)
+
+df_marg <- data.frame(
+  Valoare = as.integer(names(marg_N)),
+  P_N = as.numeric(marg_N)
+)
+knitr::kable(df_marg, digits = 4, caption = "Distribuția marginală P(N=n)")
+
+df_marg2 <- data.frame(
+  Valoare = as.integer(names(marg_F)),
+  P_F = as.numeric(marg_F)
+)
+knitr::kable(df_marg2, digits = 4, caption = "Distribuția marginală P(F=f)")
+```
+
+## c) Test empiric de independență
+
+Aplicăm un test \\(\\chi^2\\) pe tabelul de contingență (cu p-value simulat). Ipoteza nulă: **N și F sunt independente**.
+
+```{r}
+test_ind <- chisq.test(tab_NF, simulate.p.value = TRUE, B = 2000)
+```
+
+## d) Vizualizare (heatmap + mosaicplot) și interpretare
+
+```{r}
+prob_mat <- as.matrix(prob_NF)
+x_vals <- as.numeric(rownames(prob_mat)) # N
+y_vals <- as.numeric(colnames(prob_mat)) # F
+
+par(mfrow = c(1, 2))
+
+# Heatmap (probabilitati empirice)
+image(
+  x = x_vals, y = y_vals, z = prob_mat,
+  xlab = "N (nr. încercări)", ylab = "F (nr. eșecuri)",
+  main = "Heatmap: P(N,F) (empiric)",
+  axes = FALSE
+)
+axis(1, at = x_vals, labels = x_vals)
+axis(2, at = y_vals, labels = y_vals)
+
+# Mosaicplot (frecvente)
+mosaicplot(
+  tab_NF,
+  main = "Mosaicplot: frecvențe (N,F)",
+  xlab = "N", ylab = "F"
+)
+
+par(mfrow = c(1, 1))
+```
+
+**Interpretare:** ne așteptăm ca testul de independență să respingă independența, deoarece **F este aproape determinată de N** (prin relația \\(F=N-1\\) la succes și \\(F=N\\) la eșec final). Consecința: numărul de retry-uri controlează direct numărul de eșecuri, deci variabilele sunt dependente în modelul nostru.
+
+
+
+# 6. Variabile aleatoare bidimensionale (discrete și continue) (Cerința 5)
+
+În această cerință analizăm variabila bidimensională **(N, T)**:
+
+\\begin{itemize}
+  \\item **N** = numărul total de încercări (variabilă discretă)
+  \\item **T** = timpul total până la succes sau abandon (variabilă continuă)
+\\end{itemize}
+
+În modelul nostru, **T** include suma timpilor de procesare \\(S_i\\) și timpii de așteptare de tip backoff între încercări eșuate.
+
+## Implementarea simulării (N, T)
+
+Funcția `simuleaza_NT_din_ex3` generează un eșantion de perechi (N, T) folosind `simuleaza_o_cerere` din Cerința 3.
+
+```{r}
+print(simuleaza_NT_din_ex3)
+```
+
+## a) Reprezentare grafică (scatterplot)
+
+```{r}
+M <- 100000
+n_max <- 3
+p_succes <- 0.7
+t_0 <- 400
+medie_S <- 150
+backoff_fix <- 50
+
+df_NT <- simuleaza_NT_din_ex3(
+  M = M, n_max = n_max, p_succes = p_succes,
+  t_0 = t_0, medie_S = medie_S, backoff_fix = backoff_fix
+)
+
+plot(
+  df_NT$N, df_NT$T,
+  xlab = "N (număr încercări)",
+  ylab = "T (timp total)",
+  main = "Scatterplot: (N, T)",
+  pch = 16, cex = 0.4
+)
+
+# Linia de regresie pentru a evidenția trendul
+abline(lm(T ~ N, data = df_NT), lwd = 2)
+```
+
+## b) Medii, varianțe, covarianță, corelație
+
+```{r}
+mean_N <- mean(df_NT$N)
+mean_T <- mean(df_NT$T)
+
+var_N <- var(df_NT$N)
+var_T <- var(df_NT$T)
+
+cov_NT <- cov(df_NT$N, df_NT$T)
+cor_NT <- cor(df_NT$N, df_NT$T)
+
+rez_stats <- data.frame(
+  Indicator = c("E[N]", "E[T]", "Var(N)", "Var(T)", "Cov(N,T)", "Corr(N,T)"),
+  Valoare = c(mean_N, mean_T, var_N, var_T, cov_NT, cor_NT)
+)
+
+knitr::kable(rez_stats, digits = 4, caption = "Statistici empirice pentru variabila (N, T)")
+```
+
+## c) Interpretarea corelației
+
+Ne așteptăm la **corelație pozitivă** între **N** și **T**: atunci când avem mai multe retry-uri (N mai mare), se acumulează mai mulți timpi de procesare \\(S_i\\) și, de regulă, mai mulți timpi de backoff, astfel încât timpul total **T** crește. În termeni de sistem, retry-urile cresc șansa de succes, dar cresc și latența percepută de utilizator.
+
+
+# 8. Dependența (Cerința 7)
+
+În modelele anterioare am presupus că timpul de răspuns pentru o încercare este independent de istoric. În realitate, un eșec poate indica o problemă de sistem,   ceea ce crește timpul de execuție pentru următoarea încercare. Aceasta creează o **dependență** între eșecuri și latență.
+
+## a) Implementarea funcției pentru o cerere dependentă
+
+Vom modifica funcția de simulare a unei cereri pentru a include un parametru `factor_latenta`. Mecanismul este următorul:
+
+* Dacă o încercare eșuează, timpul mediu de procesare (`medie_S`) pentru următoarea încercare este multiplicat cu acest factor.
+* Inițial, `factor_latenta` este egal cu 1, deci sistemul pornește din starea de independent.
+* Dacă `factor_latenta > 1.0`, sistemul devine "mai lent" pe măsură ce acumulăm eșecuri (degradare progresivă).
+
+```{r sim_dependenta}
+#' Simuleaza o cerere cu posibilitatea dependentei intre esecuri si latenta
+#' 
+#' @param n_max Numarul maxim de incercari
+#' @param p_succes Probabilitatea de succes a unei incercari
+#' @param medie_S_initial Timpul mediu de procesare initial (fara penalizari)
+#' @param backoff_fix Timpul de asteptare intre incercari
+#' @param factor_latenta Factorul cu care creste media timpului de raspuns dupa un esec.
+#'                       Daca este 1.0, timpii sunt independenti.
+#'                       Daca este > 1.0, sistemul devine mai lent dupa esecuri.
+#' 
+#' @return Timpul total T
+simuleaza_cerere_dependenta <- function(n_max = 3, p_succes = 0.7, medie_S_initial = 150, 
+                                        backoff_fix = 50, factor_latenta = 1.0) {
+  
+  timp_total <- 0
+  medie_curenta <- medie_S_initial
+  succes <- FALSE
+  
+  for (i in 1:n_max) {
+    # Generam timpul de raspuns S_i
+    # Daca factor_latenta > 1 si am avut esecuri anterioare, medie_curenta va fi mai mare
+    s_i <- rexp(1, rate = 1/medie_curenta)
+    timp_total <- timp_total + s_i
+    
+    # Verificam succesul
+    if (runif(1) < p_succes) {
+      succes <- TRUE
+      break # Daca am reusit, iesim
+    } else {
+      # Daca am esuat
+      # Adaugam backoff daca mai avem incercari
+      if (i < n_max) {
+        timp_total <- timp_total + backoff_fix
+        
+        # Aplicam dependenta: latenta creste pentru urmatoarea incercare
+        medie_curenta <- medie_curenta * factor_latenta
+      }
+    }
+  }
+  
+  return(timp_total)
+}
+```
+
+## b) Comparație: Independent vs Dependent
+
+Vom simula două scenarii pentru a analiza impactul dependenței asupra timpului total de așteptare ($T$):
+
+1. **Scenariul Independent:** `factor_latenta = 1.0`. Eșecurile nu afectează performanța serverului pentru reîncercări.
+2. **Scenariul Dependent:** `factor_latenta = 2.0`. După fiecare eșec, timpul mediu de răspuns se dublează (ex: 150ms -> 300ms -> 600ms).
+
+Parametrii comuni:
+* $M = 10000$ simulări
+* $n_{max} = 3$ încercări
+* $p_{succes} = 0.7$
+
+```{r run_sim_dependenta}
+M <- 10000 
+
+# 1. Simulare timpi independenti
+timp_independent <- replicate(M, simuleaza_cerere_dependenta(
+  n_max = 3, p_succes = 0.7, medie_S_initial = 150, 
+  backoff_fix = 50, factor_latenta = 1.0
+))
+
+# 2. Simulare timpi dependenti (latenta se dubleaza la esec)
+timp_dependent <- replicate(M, simuleaza_cerere_dependenta(
+  n_max = 3, p_succes = 0.7, medie_S_initial = 150, 
+  backoff_fix = 50, factor_latenta = 2.0
+))
+```
+
+### Analiza Statistică
+
+Comparăm media și varianța celor două distribuții. Ne așteptăm ca în cazul dependent, varianța să crească semnificativ deoarece cazurile de eșec repetat vor genera timpi foarte lungi.
+
+```{r stats_dependenta}
+var_indep <- var(timp_independent)
+var_dep   <- var(timp_dependent)
+mean_indep <- mean(timp_independent)
+mean_dep   <- mean(timp_dependent)
+
+df_rezultate <- data.frame(
+  Scenariu = c("Independent (Factor=1.0)", "Dependent (Factor=2.0)"),
+  Media_T = c(mean_indep, mean_dep),
+  Varianta_T = c(var_indep, var_dep)
+)
+
+knitr::kable(df_rezultate, digits = 2, caption = "Comparatie T")
+```
+
+### Vizualizare Grafică
+
+Vom suprapune densitățile celor două distribuții pentru a evidenția diferențele.
+
+```{r plot_dependenta, fig.width=8, fig.height=5, fig.align='center'}
+# Setam limita graficului pentru a cuprinde si cozile lungi ale distributiei dependente
+x_max <- quantile(timp_dependent, 0.99) 
+
+# Afisam cazul dependent primul (dispersie mai mare)
+plot(density(timp_dependent), 
+     col = "red", lwd = 2, 
+     xlim = c(0, x_max),
+     main = "Distributie Timp Total: Dependent vs Independent",
+     xlab = "Timp Total (ms)", 
+     ylab = "Densitate")
+
+# Adaugam cazul independent
+lines(density(timp_independent), col = "blue", lwd = 2)
+
+legend("topright", 
+       legend = c("Dependent (Factor=2.0)", "Independent (Factor=1.0)"),
+       col = c("red", "blue"), 
+       lwd = 2)
+```
+
+**Interpretare:**
+
+* **Linia Albastră (Independent):** Este mai concentrată în stânga, indicând timpi mai mici și mai predictibili.
+* **Linia Roșie (Dependent):** Este mai aplatizată și se întinde mai mult spre dreapta. Aceasta cauzează o varianță mult mai mare și crește riscul ca utilizatorii să experimenteze timpi de așteptare foarte mari în momentele critice ale sistemului.
+
+
+
+# 9. Inegalități Probabilistice (Cerința 8)
+
+Acest capitol se concentrează pe validarea și utilizarea inegalităților probabilistice clasice pentru a analiza comportamentul sistemului de retry. Aceste inegalități oferă limite teoretice ("bounds") utile atunci când distribuția exactă este dificil de calculat.
+
+## Funcția de Simulare Avansată
+
+Pentru acest exercițiu, folosim o versiune extinsă a simulării care include un mecanism de *backoff exponențial*:
+
+```{r}
+#' Simuleaza procesul si returneaza timpul si nr de esecuri
+#' 
+#' @param n_max Numar maxim de incercari
+#' @param p_succes Probabilitate de succes
+#' @param medie_S_initial Media timpului initial
+#' @param backoff_fix Timp de asteptare (backoff)
+#' @param factor_latenta Factor de crestere a latentei
+#' @return Lista cu timpul total si numarul de esecuri
+print(simuleaza_avansat)
+```
+
+## a) Inegalitățile lui Markov și Cebîșev
+
+### 1. Inegalitatea lui Markov
+Pentru o variabilă aleatoare nenegativă $X$ și $a > 0$:
+$$P(X \ge a) \le \frac{E[X]}{a}$$
+În contextul nostru, $X$ este timpul total $T$. Alegem $a = 2 \cdot E[T]$. Limita teoretică este $1/2 = 0.5$.
+
+### 2. Inegalitatea lui Cebîșev
+Pentru orice variabilă aleatoare cu varianță finită și $k > 0$:
+$$P(|X - E[X]| \ge k\sigma) \le \frac{1}{k^2}$$
+Verificăm pentru $k=2$. Limita teoretică este $1/4 = 0.25$.
+
+### Validare Numerică
+
+Rulăm simularea cu $N=10000$ cereri și comparăm rezultatele empirice (obținute prin simulare) cu cele teoretice (calculate analitic).
+
+```{r}
+set.seed(42)
+M <- 10000 
+n_max <- 5 
+p <- 0.4
+mu <- 100
+bf <- 20
+fact <- 1.5 
+
+# 1. Simulare
+rezultate <- replicate(M, simuleaza_avansat(n_max, p, mu, bf, fact), simplify = FALSE)
+T_vals <- sapply(rezultate, function(x) x$timp)
+
+# 2. Valori Teoretice
+teoretic <- calculeaza_teoretic_T(n_max, p, mu, bf, fact)
+media_teoretica <- teoretic$media
+var_teoretica <- teoretic$varianta
+
+# a) Verificare Markov
+prob_markov <- mean(T_vals >= 2 * media_teoretica)
+
+# b) Verificare Cebisev
+dist <- 2 * sqrt(var_teoretica)
+prob_ceb <- mean(abs(T_vals - media_teoretica) >= dist)
+
+df_rezultate <- data.frame(
+  Inegalitate = c("Markov (a=2*E[T])", "Cebisev (k=2)"),
+  Prob_Empirica = c(prob_markov, prob_ceb),
+  Limita_Teoretica = c(0.50, 0.25),
+  Respectat = c(prob_markov <= 0.50, prob_ceb <= 0.25)
+)
+
+knitr::kable(df_rezultate, caption = "Validarea Inegalităților")
+```
+
+## b) Inegalitatea lui Chernoff (pentru eșecuri)
+
+Chernoff oferă limite exponențiale mult mai strânse ("sharp bounds") pentru sumele de variabile aleatoare independente.
+Aici analizăm numărul de eșecuri.
+
+```{r}
+Esc_vals <- sapply(rezultate, function(x) x$esecuri)
+x0 <- 3 # Verificam prob >= 3 esecuri
+
+# Estimare MGF empiric
+t_val <- 0.5
+mgf <- mean(exp(t_val * Esc_vals))
+
+prob_esec <- mean(Esc_vals >= x0)
+bound <- mgf / exp(t_val * x0)
+
+cat("Probabilitate Reala (Empirica):", prob_esec, "\n")
+cat("Limita Chernoff Calculate:      ", bound, "\n")
+cat("Verificare (Reala <= Limita):   ", prob_esec <= bound, "\n")
+```
+
+## c) Inegalitatea lui Jensen
+
+Pentru o funcție convexă $\phi$, avem:
+$$\phi(E[T]) \le E[\phi(T)]$$
+Aceasta este crucială în analiza de risc, unde costurile cresc adesea neliniar (convex) cu timpul de așteptare.
+
+Considerăm funcția de cost pătratică $\phi(x) = x^2$.
+
+```{r}
+phi <- function(x) x^2
+lhs <- phi(mean(T_vals))   # phi(E[T])
+rhs <- mean(phi(T_vals))   # E[phi(T)]
+
+cat("phi(E[T]) [Costul timpului mediu]: ", lhs, "\n")
+cat("E[phi(T)] [Media costurilor]:      ", rhs, "\n")
+cat("Diferenta (Risc Subestimat):       ", rhs - lhs, "\n")
+```
+Se observă clar că $E[\phi(T)]$ este mai mare. Dacă am dimensiona bugetul bazându-ne doar pe timpul mediu, am subestima sistematic costurile reale.
+
+
+
+# 10. Aproximare (Cerința 9)
+
+În problemele de trafic real, timpul total de procesare pe o perioadă lungă (o zi) este suma mai multor evenimente individuale (cereri). Deși timpii individuali pot avea distribuții exponențiale (asimetrice), suma lor tinde să devină normală (Gaussiană).
+
+## Funcția de Simulare
+
+Următoarea funcție simulează activitatea dintr-o zi. Observați că numărul de termeni din sumă (`k_cereri`) este el însuși o variabilă aleatoare (Poisson), ceea ce face ca suma să fie una compusă.
+
+```{r}
+simuleaza_suma_totala <- function(lambda_trafic = 1000, medie_latenta = 150) {
+  
+  #Generam numarul de cereri pentru o zi (Poisson)
+  k_cereri <- rpois(1, lambda = lambda_trafic)
+  
+  suma_zi <- 0
+  
+  if (k_cereri > 0) {
+    #Generam latentele individuale (S_i)
+    #Folosim distributia exponentiala
+    latente_individuale <- rexp(k_cereri, rate = 1/medie_latenta)
+    
+    #Suma totala
+    suma_zi <- sum(latente_individuale)
+  }
+  
+  return(suma_zi)
+}
+```
+
+## Execuție și Analiză
+
+Mai jos este codul care rulează simularea și verifică aproximarea normală pe parcursul unei zile. 
+
+```{r}
+if (TRUE) {
+  M <- 1000 #nr zile simulate
+  
+  #Simulare
+  latenta_totala_zi <- replicate(M, simuleaza_suma_totala(lambda_trafic = 1000, 
+                                                        medie_latenta = 150))
+  
+  #Calculam parametrii empirici pentru ajustarea distributiei normale
+  media_agregat <- mean(latenta_totala_zi)
+  sd_agregat <- sd(latenta_totala_zi)
+  
+  #Afisare rezultate
+  cat("Media Empirica a sumei:    ", round(media_agregat, 2), "\n")
+  cat("Deviatia Standard Empirica:", round(sd_agregat, 2), "\n")
+  
+  #Vizualizare Comparativa
+  par(mfrow = c(1, 1))
+  
+  #Histograma datelor agregate
+  hist(latenta_totala_zi, 
+       probability = TRUE, 
+       breaks = 30,
+       col = "cornflowerblue", 
+       border = "white",
+       main = "Latenta totala zilnica",
+       xlab = "Latenta Totala (ms/zi)",
+       ylab = "Densitate")
+  
+  #Adaugam curba Teoretica Normala (linia rosie)
+  curve(dnorm(x, mean = media_agregat, sd = sd_agregat), 
+        add = TRUE, 
+        col = "red", 
+        lwd = 2)
+}
+```
+
+### Explicație Teoretică
+
+Graficul de mai sus demonstrează **Teorema Limită Centrală**. Chiar dacă latențele individuale sunt exponențiale (asimetrice), suma a ~1000 de astfel de latențe se așează pe o curbă în formă de clopot (Normală).
+
+Linia roșie reprezintă distribuția Normală teoretică parametrizată cu media și deviația standard empirică a datelor. Suprapunerea perfectă confirmă că putem folosi aproximarea normală pentru a face predicții despre traficul total al sistemului.
+
+
+
+
+# 11. Churn (Cerința 10)
+
+Un aspect critic în modelarea sistemelor reale este comportamentul utilizatorilor, în special decizia de a părăsi platforma ("Churn"). În acest model, considerăm două cauze distincte pentru churn:
+
+1.  **Churn Aleator (Natural):** Utilizatorul pleacă din motive externe, independente de performanța sistemului (ex: nu mai are nevoie de serviciu).
+2.  **Churn Condiționat (Tehnic):** Utilizatorul pleacă din cauza frustrării acumulate în urma erorilor tehnice repetate.
+
+## a) Funcțiile de Simulare
+
+### Churn Aleator
+Această funcție modelează plecarea ca un proces Bernoulli simplu cu probabilitatea $q$.
+
+```{r}
+simuleaza_churn_aleator <- function(q = 0.05) {
+  return(runif(1) < q)
+}
+```
+
+### Churn Condiționat
+Utilizatorul monitorizează o fereastră de $m$ interacțiuni recente. Dacă numărul de eșecuri depășește un prag $k$, utilizatorul părăsește platforma. Numărul de eșecuri este modelat Binomial ($Bin(m, 1-p_{succes})$).
+
+```{r}
+simuleaza_churn_conditionat <- function(m = 20, k = 5, p_succes = 0.9) {
+  # Numarul de esecuri intr-o secventa de lungime m (dist Binomiala)
+  nr_esecuri <- rbinom(1, size = m, prob = 1 - p_succes)
+  
+  # Verificam daca s-a depasit pragul de k esecuri
+  if (nr_esecuri >= k) {
+    return(TRUE)
+  } 
+  else {
+    return(FALSE)
+  }
+}
+```
+
+## b) Estimarea Ratei Totale de Churn
+
+Rata totală de churn este reuniunea celor două evenimente (Aleator SAU Condiționat). Deoarece un utilizator poate pleca din ambele motive simultan, probabilitatea totală nu este simpla sumă, ci:
+$$P(Total) = P(Aleator \cup Conditionat) = P(Aleator) + P(Conditionat) - P(Aleator \cap Conditionat)$$
+
+Execuția de mai jos simulează comportamentul pentru $M=100.000$ de utilizatori pentru a estima empiric aceste probabilități.
+
+```{r}
+if (TRUE) {
+  M <- 100000 # Numarul de utilizatori
+  
+  #REZOLVARE a)
+  
+  #Simulamrea vectorului pentru Churn Aleator
+  vec_aleator <- replicate(M, simuleaza_churn_aleator(q = 0.05))
+  
+  #Simularea vectorului pentru Churn Conditionat
+  vec_conditionat <- replicate(M, simuleaza_churn_conditionat(m = 20, k = 4, 
+                                                              p_succes = 0.75))
+
+  #REZOLVARE b)
+  
+  #Calculul Churn-ului total
+  vec_total <- (vec_aleator | vec_conditionat)
+  
+  #Estimari
+  prob_aleator     <- mean(vec_aleator)
+  prob_conditionat <- mean(vec_conditionat)
+  prob_total       <- mean(vec_total)
+  
+  #Afisare Rezultate
+  cat("Analiza Churn cu urmatorii parametri:\n")
+  cat("m =", 20, ", k =", 5, ", p_succes =", 0.75, "\n")
+  
+  cat("\nProbabilitati estimate (M =", M, "):\n")
+  cat("1. P(Churn Aleator):     ", round(prob_aleator, 4), "\n")
+  cat("2. P(Churn Conditionat): ", round(prob_conditionat, 4), "\n")
+  cat("3. P(Churn TOTAL):       ", round(prob_total, 4), "\n")
+}
+```
+
+Aceste rezultate ne permit să înțelegem cât din pierderea clienților este controlabilă (tehnică) și cât este inevitabilă (naturală).
+
+
+
+
+
+# 12. Impact Economic (Cerința 11)
+
+Scopul final al analizei este cuantificarea performanței tehnice în termeni financiari.
+
+## a) Definirea variabilei aleatoare pentru profitul zilnic
+
+Definim variabila aleatoare $Profit_{zi}$ ca fiind bilanțul financiar net la finalul unei zile de activitate. Aceasta se exprimă ca o funcție liniară de alte variabile aleatoare simulate anterior:
+
+$$Profit_{zi} = V_{succes} - C_{churn} - C_{SLA}$$
+
+Unde componentele sunt definite astfel:
+
+1.  **Venituri ($V_{succes}$):**
+    $$V_{succes} = N_{succes} \cdot c_{succes}$$
+    * $N_{succes}$: Variabilă aleatoare reprezentând numărul total de cereri soluționate cu succes în ziua respectivă ($I=1$).
+    * $c_{succes}$: Câștigul unitar per tranzacție reușită (ex: 2.0 EUR).
+
+2.  **Pierderi din Churn ($C_{churn}$):**
+    $$C_{churn} = N_{churn} \cdot c_{pierdere}$$
+    * $N_{churn}$: Variabilă aleatoare reprezentând numărul de utilizatori care părăsesc platforma în ziua respectivă (fie aleator, fie condiționat de erori).
+    * $c_{pierdere}$: Costul asociat pierderii unui client (LTV - Lifetime Value, ex: 20 EUR).
+
+3.  **Penalități SLA ($C_{SLA}$):**
+    $$C_{SLA} = N_{SLA} \cdot c_{penalizare}$$
+    * $N_{SLA}$: Variabilă aleatoare reprezentând numărul de cereri care au depășit timpul limită contractual $T > t_{SLA}$ (ex: 800ms).
+    * $c_{penalizare}$: Costul penalizării per încălcare a SLA (ex: 2.0 EUR).
+
+Deoarece $N_{succes}$, $N_{churn}$ și $N_{SLA}$ sunt variabile aleatoare (depind de distribuțiile de trafic, latență și mecanismele de retry), rezultă că și $Profit_{zi}$ este o variabilă aleatoare cu propria sa medie și varianță.
+
+
+Pentru implementarea acestei variabile aleatoare in R, vom folosi atat de functia de simularea unei cereri de la exercitiul 3, cat si de functia de simulare a churn-ului de la exercitiul 10. 
+
+Mai intai vom defini urmatoarea functie care simuleaza un lot de cereri:
+```{r}
+#' Aceasta functie apeleaza repetat functia simuleaza_o_cerere pentru a genera
+#' un esantion statistic de dimensiune n_simulari. Rezultatul este un tabel
+#' care permite analiza distributiei timpului total (T) si a ratei de succes.
+#'
+#' @param n_simulari Numarul total de cereri generate (ex: 1000, 10000).
+#' @param n_max Numarul maxim de incercari permise pentru o cerere (inclusiv prima incercare).
+#' @param p_succes Probabilitatea (0-1) ca o incercare individuala sa reuseasca.
+#' @param t_0 Timeout-ul initial (timpul limita de asteptare pentru primul raspuns).
+#' @param medie_S Latenta medie a serverului (pentru distributia exponentiala a timpului de procesare).
+#' @param backoff_fix Timpul fix adaugat la timeout (penalizare) in caz de esec (Backoff).
+#'
+#' @return Un `data.frame` cu `n_simulari` randuri si urmatoarele coloane:
+#' \itemize{
+#'   \item I: Indicator de succes final (1 daca a reusit, 0 altfel)
+#'   \item T: Timpul total pana la succes sau abandon (suma S_i si B_i)
+#'   \item N: Numarul total de incercari efectuate
+#'   \item D: Indicator logic (TRUE daca a existat cel putin un esec pe parcurs)
+#' }
+simuleaza_lot_cereri <- function(n_simulari, 
+                                 n_max = 3, 
+                                 p_succes = 0.8, 
+                                 t_0 = 500, 
+                                 medie_S = 150, 
+                                 backoff_fix = 50) {
+  
+  # Folosim replicate pentru a rula simularea de n ori
+  rezultate <- replicate(n_simulari, simuleaza_o_cerere(n_max = n_max, 
+                                                        p_succes = p_succes, 
+                                                        t_0 = t_0, 
+                                                        medie_S = medie_S, 
+                                                        backoff_fix = backoff_fix))
+  
+  # Transpunem matricea rezultat (sa avem cererile pe randuri) si o facem data frame
+  df <- as.data.frame(t(rezultate))
+  
+  # Curatam listele (replicate poate returna liste, noi vrem vectori numerici)
+  df[] <- lapply(df, unlist)
+  
+  return(df)
+}
+```
+
+
+Vom defini variabila aleatoare astfel:
+```{r}
+#' Calculeaza bilantul economic pentru o zi de activitate
+#' @param nr_clienti Numarul de clienti din acea zi (Kd)
+#' @param castig_per_succes Venitul generat de o cerere reusita
+#' @param cost_churn Pierderea generata de un client care pleaca
+#' @param limita_sla Timpul maxim acceptat (T_max) inainte de penalizare
+#' @param penalizare_sla Costul daca se depaseste timpul limita
+#' @param rata_churn_aleator Probabilitatea ca un utilizator sa paraseasca platforma aleator
+#' @param dim_churn_cond Dimensiunea ferestrei (numarul de cereri recente)
+#' @param prag_erori_churn_cond Pragul de erori (minim k esecuri declanseaza plecarea)
+#' @param prob_succes_churn_cond Probabilitatea de succes a unei singure cereri
+#' @return Un vector numit cu indicatorii economici: Profit, Venit, Costuri si Numarul de utilizatori pierduti.
+simuleaza_profit_zi <- function(nr_clienti, 
+                                castig_per_succes = 0.5, 
+                                cost_churn = 50, 
+                                limita_sla = 800,
+                                penalizare_sla = 2.0,
+                                rata_churn_aleator = 0.05,
+                                dim_churn_cond = 20,
+                                prag_erori_churn_cond = 5,
+                                prob_succes_churn_cond = 0.9) {
+  
+  rezultate_zi <- simuleaza_lot_cereri(nr_clienti)
+  
+  nr_succese <- sum(rezultate_zi$I == 1)
+  
+  nr_sla_fail <- sum(rezultate_zi$T > limita_sla)
+  
+  
+  # CHURN
+  plecari_aleatoare <- replicate(nr_clienti, simuleaza_churn_aleator(q = rata_churn_aleator))
+
+  plecari_conditionate <- replicate(nr_clienti, simuleaza_churn_conditionat(m = dim_churn_cond,
+                                                                            k = prag_erori_churn_cond,
+                                                                            p_succes = prob_succes_churn_cond))
+  plecari_totale <- plecari_aleatoare | plecari_conditionate
+  
+  nr_churn = sum(plecari_totale)
+  
+  
+  # PARTEA FINANCIARA
+  venit_total <- nr_succese * castig_per_succes
+  cost_penalizari <- nr_sla_fail * penalizare_sla
+  pierdere_churn <- nr_churn * cost_churn
+  
+  profit_net <- venit_total - pierdere_churn - cost_penalizari
+  
+  return(c(
+    Profit = profit_net,
+    Venit = venit_total,
+    Cost_SLA = cost_penalizari,
+    Cost_Churn = pierdere_churn,
+    Nr_Churn = nr_churn
+  ))
+}
+```
+
+## b) Estimarea statistică a profitului (Medie, Varianță, Interval de Încredere)
+
+Deoarece profitul zilnic este o variabilă aleatoare, o singură simulare nu este relevantă pentru deciziile de business. Pentru a obține o estimare robustă, folosim metoda **Monte Carlo** simulând activitatea pe o perioadă extinsă (un an calendaristic).
+
+### Metodologia de Estimare
+
+1.  **Simulare Repetată:** Generăm $N$ de zile independente. Pentru fiecare zi:
+    * Se generează traficul $K_d$ (conform distribuției Poisson/Binomiale din cap. 1).
+    * Se simulează comportamentul fiecărui client și răspunsul sistemului.
+    * Se calculează profitul net al zilei respective.
+2.  **Agregare:** Obținem un vector de profituri $P = [p_1, p_2, ..., p_{N}]$.
+3.  **Calcul Statistic:**
+    * **Media Empirică ($\bar{P}$):** Speranța matematică a profitului.
+    * **Varianța ($s^2$):** Măsura riscului/volatilității afacerii.
+    * **Intervalul de Încredere (95%):** Calculat pe baza Teoremei Limită Centrală (pentru $n$ mare):
+        $$IC_{95\%} = \left[ \bar{P} - 1.96 \frac{s}{\sqrt{n}}, \quad \bar{P} + 1.96 \frac{s}{\sqrt{n}} \right]$$
+
+Vom folosi urmatoarea functie:
+
+```{r}
+#' Simuleaza un scenariu economic complet pe o perioada data
+#' Aceasta functie impacheteaza tot procesul: Trafic -> Simulare Zi -> Statistici
+#' 
+#' @param n_zile Durata simularii (zile)
+#' @param model_trafic Tipul distributiei traficului: "poisson" sau "binomiala"
+#' @param lambda_trafic_pois Media clientilor pe zi (pentru Poisson)
+#' @param nmax_trafic_bin Capacitatea maxima teoretica (pentru Binomial)
+#' @param p_trafic_bin Probabilitatea ca un potential client sa fie activ (pentru Binomial)
+#' 
+#' @param castig_per_succes Venit per succes
+#' @param cost_churn Pierdere per client plecat
+#' @param cost_sla Penalizare SLA
+#' @param rata_churn Rata de churn aleator
+#' 
+#' @param rata_churn_aleator Probabilitatea ca un utilizator sa paraseasca platforma aleator
+#' @param dim_churn_cond Dimensiunea ferestrei (numarul de cereri recente)
+#' @param prag_erori_churn_cond Pragul de erori (minim k esecuri declanseaza plecarea)
+#' @param prob_succes_churn_cond Probabilitatea de succes a unei singure cereri
+#' 
+#' @return Vectorul cu statistici (Media, Varianta, IC)
+simuleaza_scenariu_economic <- function(n_zile = 100,
+                                        model_trafic = "poisson",
+                                        lambda_trafic = 1000,
+                                        nmax_trafic_bin = 2000,
+                                        p_trafic_bin = 0.5,
+                                        castig_per_succes = 0.6,
+                                        cost_churn = 50,
+                                        cost_sla = 2.0,
+                                        rata_churn_aleator = 0.05,
+                                        dim_churn_cond = 20,
+                                        prag_erori_churn_cond = 5,
+                                        prob_succes_churn_cond = 0.9) {
+  
+  # 1. Generam Traficul (folosim functia din Ex 1)
+  trafic_zilnic <- simuleaza_trafic(n_zile,
+                                    metoda = model_trafic,
+                                    lambda = lambda_trafic,
+                                    n_max = nmax_trafic_bin,
+                                    p = p_trafic_bin)
+  
+  # 2. Alocam spatiu pentru rezultate
+  profituri <- numeric(n_zile)
+  
+  # 3. Rulam simularea zi de zi
+  for(i in 1:n_zile) {
+    # Apelam functia de zi pe care am facut-o anterior
+    rezultat_zi <- simuleaza_profit_zi(nr_clienti = trafic_zilnic[i],
+                                       castig_per_succes = castig_per_succes,
+                                       cost_churn = cost_churn,
+                                       penalizare_sla = cost_sla,
+                                       rata_churn_aleator = rata_churn_aleator,
+                                       dim_churn_cond = dim_churn_cond, 
+                                       prag_erori_churn_cond = prag_erori_churn_cond,
+                                       prob_succes_churn_cond = prob_succes_churn_cond)
+    
+    profituri[i] <- rezultat_zi["Profit"]
+  }
+  
+  # 4. Returnam profiturile
+  return(profituri)
+}
+```
+
+### Rezultatele Simulării
+
+Rulăm scenariul pentru aproximativ 5 ani de activitate ($n=5 * 365$ zile), considerând un trafic mediu $\lambda=1000$ clienți/zi și urmatorii parametrii economici: <br/>
+castig_per_succes = 2 EUR <br/>
+cost_churn = 40 EUR <br/>
+cost_sla = 0.5 EUR <br/>
+
+```{r estimare_profit_b}
+profituri <- simuleaza_scenariu_economic(
+  n_zile = 365,
+  model_trafic = "poisson",
+  lambda_trafic = 1000,
+  # Parametri economici
+  castig_per_succes = 2.0,
+  cost_churn = 40,
+  cost_sla = 0.5,
+  rata_churn_aleator = 0.001
+)
+
+
+head(profituri)
+```
+
+Acum ne putem calcula media, varianta si intervalele de incredere folosind urmatoarea functie:
+
+```{r}
+#' Calculeaza statistici descriptive si interval de incredere
+#' @param vector_valori Un vector numeric (ex: profiturile zilnice)
+#' @return Un vector cu Media, Varianta si limitele Intervalului de Incredere 95%
+calculeaza_statistici_profit <- function(vector_valori) {
+  
+  # 1. Calcule de baza
+  media <- mean(vector_valori)
+  varianta <- var(vector_valori)
+  dev_std <- sd(vector_valori)
+  n <- length(vector_valori)
+
+  # 2. Calcul Interval de Incredere 95%
+  # Formula: Media +/- 1.96 * (SD / sqrt(n))
+  eroare_std <- dev_std / sqrt(n)
+  limita_inf <- media - 1.96 * eroare_std
+  limita_sup <- media + 1.96 * eroare_std
+  
+  # 3. Returnam totul impachetat frumos
+  return(c(
+    Media = media,
+    Varianta = varianta,
+    IC_Min = limita_inf,
+    IC_Max = limita_sup
+  ))
+}
+```
+
+Folosind valorile pentru profituri generate anterior, putem construi un tabel pentru a vedea media, varianta si intervalele de incredere:
+
+```{r}
+statistici <- calculeaza_statistici_profit(profituri)
+
+knitr::kable(t(statistici), 
+             digits = 2,
+             caption = "Rezultate Economice")
+```
+
+
+
+## c) Analiza compromisurilor tehnico-economice
+
+În ingineria sistemelor, există întotdeauna un compromis între costul de a menține o calitate tehnică ridicată (ex: servere scumpe, redundanță) și pierderile cauzate de clienții nemulțumiți.
+
+Vom folosi o **Analiză de Senzitivitate** pentru a răspunde la întrebarea:
+> *"Care este rata minimă de succes tehnic pe care trebuie să o menținem pentru ca afacerea să fie profitabilă?"*
+
+Vom varia rata de succes a cererilor (`prob_succes_churn_cond`) de la 85% la 99% și vom observa evoluția profitului mediu.
+
+```{r analiza_senzitivitate, fig.width=8, fig.height=6}
+date_grafic <- genereaza_date_senzitivitate(
+  start = 0.85, 
+  end = 0.99, 
+  step = 0.01,
+  
+  # Parametrii fixi (transmisi prin ...):
+  n_zile = 100,
+  lambda_trafic = 1000,
+  castig_per_succes = 2.0,
+  cost_churn = 40,
+  cost_sla = 2.0,
+  rata_churn_aleator = 0.001    # Churn natural mic (0.1%), ca sa izolam efectul tehnic
+)
+```
+
+
+Graficul generat evidențiază o relație neliniară dramatică între calitatea tehnică și succesul economic. Putem distinge trei zone critice:
+
+1.  **Zona de Faliment (Rata de Succes < 90%)**
+    * Observăm că linia albastră se află sub pragul roșu de rentabilitate ($Profit < 0$).
+    * **Cauza:** Costul pierderii clienților (`Cost Churn` = 40 EUR) este mult mai mare decât câștigul marginal dintr-o tranzacție reușită (2 EUR).
+    * **Impact:** Chiar și o rată de succes aparent decentă de 86% generează pierderi masive (aprox. -3000 EUR/zi), deoarece numărul de clienți nemulțumiți care părăsesc platforma este suficient de mare pentru a anula toate veniturile.
+
+2.  **Punctul Critic (Break-even Point $\approx$ 90%)**
+    * Graficul ne arată că **pragul minim de supraviețuire** al afacerii este o rată de succes tehnic de **90%**.
+    * În acest punct, veniturile din tranzacțiile reușite abia reușesc să acopere costurile operaționale și pierderile cauzate de churn.
+
+3.  **Zona de Profit și Saturare (Rata de Succes > 92%)**
+    * Odată depășit pragul critic, profitul crește abrupt, ajungând rapid la valori pozitive (ex: 1000-2000 EUR).
+    * **Randamente descrescătoare:** Se observă că diferența de profit între 96% și 99% este mult mai mică decât diferența între 88% și 91%. Curba se aplatizează ("saturare"), ceea ce înseamnă că, după un anumit nivel de calitate, investițiile suplimentare aduc beneficii economice marginale mai mici.
+ 
+    
+# 13. Vizualizare statistica (Cerinta 12)
+
+## a) Histograme pentru T si profit
+
+Pentru a realiza aceste doua histograme vom defini o functie care accepta ca parametrii 2 vectori: unul cu timpii pana la succes/abandon in ms, iar celalt cu profituri.
+
+```{r}
+#' Deseneaza Histogramele pentru Timp si Profit (Cerinta 12a)
+#' @param vector_timp
+#' @param vector_profit
+#' @return Nimic, doar deseneaza histogramele
+plot_histograme_12a <- function(vector_timp, vector_profit) {
+  # Impartim ecranul in 2 (stanga/dreapta)
+  par(mfrow = c(1, 2))
+  
+  # 1. Histograma Timpului (T)
+  hist(vector_timp, 
+       col = "lightblue", 
+       border = "white", 
+       main = "Distributia Timpului Total (T)",
+       xlab = "Timp (ms)", 
+       ylab = "Frecventa",
+       probability = TRUE)
+
+  # 2. Histograma Profitului
+  hist(vector_profit, 
+       col = "lightgreen", 
+       border = "white",
+       main = "Distributia Profitului Zilnic",
+       xlab = "Profit (EUR)",
+       ylab = "Frecventa")
+
+  # Resetam layout-ul
+  par(mfrow = c(1, 1))
+}
+```
+
+Generam datele:
+
+```{r}
+df_cereri_viz <- simuleaza_lot_cereri(n_simulari = 5000, 
+                                      n_max = 3, 
+                                      p_succes = 0.8, 
+                                      medie_S = 150)
+  
+vector_profit_viz <- replicate(5000, {
+  # Generam o zi cu trafic mediu (1000 clienti)
+  rez <- simuleaza_profit_zi(nr_clienti = 1000, 
+                             castig_per_succes = 2.0, 
+                             cost_churn = 20, 
+                             rata_churn_aleator = 0.001)
+  return(rez["Profit"])
+})
+```
+
+Si vizualizam histogramele folosind functia:
+
+```{r}
+plot_histograme_12a(vector_timp = df_cereri_viz$T, vector_profit = vector_profit_viz)
+```
+
+
+## b) Boxplot-uri pentru T conditionat de succes/esec si pentru scenarii diferite
+
+Pentru a reprezenta boxplot-urile vom folosi urmatoarea functie:
+
+```{r}
+#' Deseneaza Boxplot-uri comparative (Cerinta 12b)
+#' @param df_cereri Dataframe-ul principal pentru analiza Succes/Esec. Trebuie sa contina 
+#'                  coloanele T (Timp total) si I (Indicator succes: 0 sau 1).
+#' @param df_scenariu_1 Dataframe cu rezultatele primului scenariu
+#' @param df_scenariu_2 Dataframe cu rezultatele celui de-al doilea scenariu
+#' @return Nimic, doar deseneaza boxplot-uri
+plot_boxplots_12b <- function(df_cereri, df_scenariu_1, df_scenariu_2) {
+  
+  # Layout: 1 rand, 2 coloane
+  par(mfrow = c(1, 2))
+  
+  # 1. Boxplot Conditionat: Succes vs Esec
+  # Transformam 0/1 in etichete text
+  etichete <- factor(df_cereri$I, levels = c(0, 1), labels = c("Esec", "Succes"))
+  
+  boxplot(df_cereri$T ~ etichete,
+          col = c("salmon", "lightgreen"),
+          main = "Timp (T) conditionat de Rezultat",
+          ylab = "Timp Total (ms)",
+          xlab = "Rezultat Final")
+  
+  # 2. Boxplot Comparatie Scenarii
+  # Cream o lista pentru boxplot
+  boxplot(df_scenariu_1$T, df_scenariu_2$T,
+          names = c("Scenariu A", "Scenariu B"),
+          col = c("lightblue", "gold"),
+          main = "Comparatie Scenarii",
+          ylab = "Timp Total (ms)")
+  
+  par(mfrow = c(1, 1))
+}
+```
+
+
+Pentru a vizualiza impactul mecanismului de *Retry* asupra distribuției timpului de răspuns, am definit două scenarii arhitecturale distincte:
+
+1.  **Scenariul A (Standard / Robust):**
+    * Folosim `n_max = 3` (până la 3 încercări).
+    * **Filozofie:** Sistemul prioritizează livrarea cu succes a răspunsului, chiar dacă asta înseamnă că utilizatorul așteaptă mai mult în caz de erori temporare.
+2.  **Scenariul B (Fail-Fast):**
+    * Folosim `n_max = 1` (o singură încercare, fără retry).
+    * **Filozofie:** Sistemul prioritizează eliberarea rapidă a resurselor. Dacă apare o eroare, se raportează imediat, fără a ține clientul în așteptare ("Eșuează Rapid").
+
+Generăm datele și vizualizăm diferențele:
+
+```{r boxplot_scenarii, fig.width=10, fig.height=5}
+# 1. Generam datele pentru Scenariul A (Standard: 3 incercari)
+# Acesta va avea o dispersie mai mare a timpului din cauza reincercarilor
+df_standard <- simuleaza_lot_cereri(n_simulari = 5000, 
+                                    n_max = 3, 
+                                    p_succes = 0.8, 
+                                    medie_S = 150)
+
+# 2. Generam datele pentru Scenariul B (Fail-Fast: 1 incercare)
+# Schimbam parametrul n_max la 1 pentru a simula lipsa retry-urilor
+# Acesta ar trebui sa aiba o latenta mult mai predictibila (varianta mica)
+df_fail_fast <- simuleaza_lot_cereri(n_simulari = 5000, 
+                                     n_max = 1, 
+                                     p_succes = 0.8, 
+                                     medie_S = 150)
+
+# 3. Apelam functia de vizualizare definita la punctul anterior
+# Argumentul 1 (df_standard) este folosit pentru graficul din stanga (Succes vs Esec)
+# Argumentele 2 si 3 sunt folosite pentru comparatia directa (Standard vs Fail-Fast)
+plot_boxplots_12b(df_cereri = df_standard, 
+                  df_scenariu_1 = df_standard, 
+                  df_scenariu_2 = df_fail_fast)
+```
+
+
+## c) Interpretare: Mediană, IQR și Outlieri
+
+Analizăm distribuțiile vizualizate în graficul Boxplot pentru a extrage concluzii despre performanța sistemului.
+
+### 1. Analiza Medianei (Linia neagră orizontală)
+* **Succes vs. Eșec:** Observăm o discrepanță majoră. Mediana pentru cererile cu **Succes** este joasă (aprox. 150ms), indicând că sistemul funcționează rapid în condiții normale. În schimb, mediana pentru **Eșec** este ridicată (aprox. 500ms). Aceasta confirmă că "costul" unui eșec nu este doar eroarea în sine, ci și timpul pierdut în mecanismele de *Retry*.
+* **Scenariul A vs. B:** Scenariul *Fail-Fast* (B - Galben) are o mediană vizibil mai mică decât Scenariul Standard (A - Albastru), deoarece elimină timpul de așteptare pentru reîncercări inutile.
+
+### 2. Analiza IQR (Înălțimea cutiei colorate)
+* **Definiție:** Intervalul Interquartilic (IQR) măsoară dispersia statistică (unde se află 50% dintre datele centrale).
+* **Interpretare:** Cutia roșie (Eșec) este mult mai înaltă decât cea verde (Succes). Acest lucru indică o **instabilitate mare** a timpului de răspuns în caz de erori – unii utilizatori așteaptă puțin până la eroare, alții așteaptă foarte mult (în funcție de momentul exact când serverul respinge conexiunea).
+* **Predictibilitate:** Scenariul B (Galben) are un IQR mai mic (cutie mai îngustă) decât A, ceea ce îl face un sistem mai predictibil (Latență Deterministică).
+
+### 3. Analiza Outlierilor (Punctele izolate)
+* **Observație:** În graficul din dreapta, Scenariul A (Albastru) prezintă o "coadă" lungă de puncte deasupra mustăților, ajungând până la 1500ms+.
+* **Semnificație:** Acești outlieri reprezintă **cazurile patologice** (Worst Case Execution Time). Deși rari, acești utilizatori au suferit latențe inacceptabile. Scenariul B reduce drastic numărul și magnitudinea acestor valori extreme, tăind "coada" distribuției.

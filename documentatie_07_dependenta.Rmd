@@ -1,4 +1,4 @@
-# 7. Dependența (Cerința 7)
+# 8. Dependența (Cerința 7)
 
 În modelele anterioare am presupus că timpul de răspuns pentru o încercare este independent de istoric. În realitate, un eșec poate indica o problemă de sistem,   ceea ce crește timpul de execuție pentru următoarea încercare. Aceasta creează o **dependență** între eșecuri și latență.
 

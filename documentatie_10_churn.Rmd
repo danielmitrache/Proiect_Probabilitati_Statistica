@@ -3,7 +3,7 @@
 if(file.exists("R/10_churn.R")) source("R/10_churn.R")
 ```
 
-# 10. Churn (Cerința 10)
+# 11. Churn (Cerința 10)
 
 Un aspect critic în modelarea sistemelor reale este comportamentul utilizatorilor, în special decizia de a părăsi platforma ("Churn"). În acest model, considerăm două cauze distincte pentru churn:
 

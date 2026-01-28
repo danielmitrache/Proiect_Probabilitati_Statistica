@@ -4,7 +4,7 @@ source("R/03_evenimente.r")
 source("R/05_bivarianta_NT.R")
 ```
 
-# 5. Variabile aleatoare bidimensionale (discrete și continue) (Cerința 5)
+# 6. Variabile aleatoare bidimensionale (discrete și continue) (Cerința 5)
 
 În această cerință analizăm variabila bidimensională **(N, T)**:
 

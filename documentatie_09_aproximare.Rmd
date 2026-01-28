@@ -3,7 +3,7 @@
 if(file.exists("R/09_aproximare.R")) source("R/09_aproximare.R")
 ```
 
-# 9. Aproximare (Cerința 9)
+# 10. Aproximare (Cerința 9)
 
 În problemele de trafic real, timpul total de procesare pe o perioadă lungă (o zi) este suma mai multor evenimente individuale (cereri). Deși timpii individuali pot avea distribuții exponențiale (asimetrice), suma lor tinde să devină normală (Gaussiană).
 

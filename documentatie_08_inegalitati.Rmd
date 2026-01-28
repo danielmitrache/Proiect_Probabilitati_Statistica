@@ -3,7 +3,7 @@ knitr::opts_chunk$set(echo = TRUE)
 source("R/08_inegalitati.R")
 ```
 
-# 8. Inegalități Probabilistice (Cerința 8)
+# 9. Inegalități Probabilistice (Cerința 8)
 
 Acest capitol se concentrează pe validarea și utilizarea inegalităților probabilistice clasice pentru a analiza comportamentul sistemului de retry. Aceste inegalități oferă limite teoretice ("bounds") utile atunci când distribuția exactă este dificil de calculat.
 

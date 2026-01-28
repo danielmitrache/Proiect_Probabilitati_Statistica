@@ -6,7 +6,7 @@ source("R/03_evenimente.r")
 source("R/04_bivarianta_NF.R")
 ```
 
-# 4. Variabile aleatoare bidimensionale discrete (Cerința 4)
+# 5. Variabile aleatoare bidimensionale discrete (Cerința 4)
 
 În această secțiune considerăm variabila bidimensională **(N, F)**, unde:
 
