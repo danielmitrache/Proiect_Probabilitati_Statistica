@@ -1,9 +1,9 @@
 ```{r, echo=FALSE}
 # Sursa fisierului original
-if(file.exists("R/09_aproximare.R")) source("R/09_aproximare.R")
+if (file.exists("R/09_aproximare.R")) source("R/09_aproximare.R")
 ```
 
-# 10. Aproximare (Cerința 9)
+# 10. Aproximare normala si agregare (Cerința 9)
 
 În problemele de trafic real, timpul total de procesare pe o perioadă lungă (o zi) este suma mai multor evenimente individuale (cereri). Deși timpii individuali pot avea distribuții exponențiale (asimetrice), suma lor tinde să devină normală (Gaussiană).
 
@@ -13,21 +13,20 @@ Următoarea funcție simulează activitatea dintr-o zi. Observați că numărul 
 
 ```{r}
 simuleaza_suma_totala <- function(lambda_trafic = 1000, medie_latenta = 150) {
-  
-  #Generam numarul de cereri pentru o zi (Poisson)
+  # Generam numarul de cereri pentru o zi (Poisson)
   k_cereri <- rpois(1, lambda = lambda_trafic)
-  
+
   suma_zi <- 0
-  
+
   if (k_cereri > 0) {
-    #Generam latentele individuale (S_i)
-    #Folosim distributia exponentiala
-    latente_individuale <- rexp(k_cereri, rate = 1/medie_latenta)
-    
-    #Suma totala
+    # Generam latentele individuale (S_i)
+    # Folosim distributia exponentiala
+    latente_individuale <- rexp(k_cereri, rate = 1 / medie_latenta)
+
+    # Suma totala
     suma_zi <- sum(latente_individuale)
   }
-  
+
   return(suma_zi)
 }
 ```
@@ -38,40 +37,44 @@ Mai jos este codul care rulează simularea și verifică aproximarea normală pe
 
 ```{r}
 if (TRUE) {
-  set.seed(123) 
-  
-  M <- 1000 #nr zile simulate
-  
-  #Simulare
-  latenta_totala_zi <- replicate(M, simuleaza_suma_totala(lambda_trafic = 1000, 
-                                                        medie_latenta = 150))
-  
-  #Calculam parametrii empirici pentru ajustarea distributiei normale
+  set.seed(123)
+
+  M <- 1000 # nr zile simulate
+
+  # Simulare
+  latenta_totala_zi <- replicate(M, simuleaza_suma_totala(
+    lambda_trafic = 1000,
+    medie_latenta = 150
+  ))
+
+  # Calculam parametrii empirici pentru ajustarea distributiei normale
   media_agregat <- mean(latenta_totala_zi)
   sd_agregat <- sd(latenta_totala_zi)
-  
-  #Afisare rezultate
+
+  # Afisare rezultate
   cat("Media Empirica a sumei:    ", round(media_agregat, 2), "\n")
   cat("Deviatia Standard Empirica:", round(sd_agregat, 2), "\n")
-  
-  #Vizualizare și comparație
+
+  # Vizualizare și comparație
   par(mfrow = c(1, 1))
-  
-  #Histograma datelor agregate
-  hist(latenta_totala_zi, 
-       probability = TRUE, 
-       breaks = 30,
-       col = "cornflowerblue", 
-       border = "white",
-       main = "Latenta totala zilnica",
-       xlab = "Latenta Totala (ms/zi)",
-       ylab = "Densitate")
-  
-  #Adaugam curba teoretica normala (linia rosie)
-  curve(dnorm(x, mean = media_agregat, sd = sd_agregat), 
-        add = TRUE, 
-        col = "red", 
-        lwd = 2)
+
+  # Histograma datelor agregate
+  hist(latenta_totala_zi,
+    probability = TRUE,
+    breaks = 30,
+    col = "cornflowerblue",
+    border = "white",
+    main = "Latenta totala zilnica",
+    xlab = "Latenta Totala (ms/zi)",
+    ylab = "Densitate"
+  )
+
+  # Adaugam curba teoretica normala (linia rosie)
+  curve(dnorm(x, mean = media_agregat, sd = sd_agregat),
+    add = TRUE,
+    col = "red",
+    lwd = 2
+  )
 }
 ```
 

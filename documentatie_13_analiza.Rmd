@@ -2,7 +2,7 @@
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# 13. Analiză de Sinteză (Cerința 13)
+# 14. Analiză de Sinteză (Cerința 13)
 
 Acest capitol prezintă o sinteză conceptuală a întregului proiect, integrând elemente de statistică descriptivă, probabilități, simulare Monte Carlo și analiză economică.
 
