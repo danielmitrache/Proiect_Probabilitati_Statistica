@@ -7,7 +7,7 @@ if(file.exists("R/09_aproximare.R")) source("R/09_aproximare.R")
 
 În problemele de trafic real, timpul total de procesare pe o perioadă lungă (o zi) este suma mai multor evenimente individuale (cereri). Deși timpii individuali pot avea distribuții exponențiale (asimetrice), suma lor tinde să devină normală (Gaussiană).
 
-## Funcția de Simulare
+## a) Funcția de Simulare
 
 Următoarea funcție simulează activitatea dintr-o zi. Observați că numărul de termeni din sumă (`k_cereri`) este el însuși o variabilă aleatoare (Poisson), ceea ce face ca suma să fie una compusă.
 
@@ -32,7 +32,7 @@ simuleaza_suma_totala <- function(lambda_trafic = 1000, medie_latenta = 150) {
 }
 ```
 
-## Execuție și Analiză
+## b) Comparația histogramei agregatului cu o normală ajustată
 
 Mai jos este codul care rulează simularea și verifică aproximarea normală pe parcursul unei zile. 
 

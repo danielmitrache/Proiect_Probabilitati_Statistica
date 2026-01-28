@@ -1,19 +1,25 @@
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 source("R/03_evenimente.R")
+library(ggplot2)
 ```
 
 # 3. Evenimente și Probabilități (Cerința 3)
 
-În această secțiune, analizăm comportamentul probabilistic al unei singure cereri care trece prin mecanismul de retry. Definim următoarele evenimente cheie:
+În această secțiune, analizăm comportamentul probabilistic al unei singure cereri care trece prin mecanismul de retry. Definim evenimentele de interes, le estimăm probabilitățile prin simulare și validăm relații teoretice între ele.
+
+## a) Definirea Evenimentelor și a Variabilelor
+
+Definim următoarele evenimente cheie asociate unei cereri:
+
 \begin{itemize}
-    \item **A (Succes):** Cererea este procesată cu succes înainte de a epuiza numărul maxim de încercări.
+    \item **A (Succes):** Cererea este procesată cu succes înainte de a epuiza numărul maxim de încercări ($I=1$).
     \item **B (SLA):** Cererea este finalizată într-un timp total $T \le 400$ ms.
-    \item **C (Eficiență):** Cererea reușește din primele $n_0 = 2$ încercări.
-    \item **D (Eșec Parțial):** Cererea întâmpină cel puțin un eșec pe parcurs, deși poate reuși la final.
+    \item **C (Eficiență):** Cererea reușește din primele $n_0 = 2$ încercări (fără a necesita multe retry-uri).
+    \item **D (Eșec Parțial):** Cererea întâmpină cel puțin un eșec pe parcurs, deși poate reuși la final ($D=TRUE$).
 \end{itemize}
 
-## Implementarea Simulării
+### Implementarea Simulării
 
 Funcția `simuleaza_o_cerere` modelează întregul ciclu de viață al unei cereri:
 
@@ -30,7 +36,7 @@ Funcția `simuleaza_o_cerere` modelează întregul ciclu de viață al unei cere
 print(simuleaza_o_cerere)
 ```
 
-## Estimarea Probabilităților
+## b) Estimarea Probabilităților
 
 Rulăm o simulare Monte Carlo cu $M=10000$ de cereri, având parametrii: $n_{max}=3$, $p=0.7$, $t_{SLA}=400$.
 
@@ -60,9 +66,26 @@ rezultate_sim <- data.frame(
 knitr::kable(rezultate_sim, digits = 4, caption = "Probabilități Empirice Estimate")
 ```
 
-## Verificarea Formulelor
+### Vizualizare Grafică
 
-Verificăm numeric formula probabilității reuniunii: $P(A \cup D) = P(A) + P(D) - P(A \cap D)$.
+Prezentăm grafic probabilitățile estimate pentru o comparație vizuală rapidă.
+
+```{r, echo=FALSE, fig.height=4, fig.width=6, fig.align='center'}
+ggplot(rezultate_sim, aes(x = Eveniment, y = Probabilitate)) +
+  geom_bar(stat = "identity", fill = "steelblue", width = 0.6) +
+  geom_text(aes(label = round(Probabilitate, 3)), vjust = -0.5) +
+  ylim(0, 1.1) +
+  theme_minimal() +
+  labs(title = "Probabilități Estimate prin Simulare", x = "", y = "Probabilitate") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## c) Validarea Teoretică a Reuniunii (Inclusion-Exclusion)
+
+Verificăm numeric formula probabilității reuniunii pentru evenimentele A și D:
+$$P(A \cup D) = P(A) + P(D) - P(A \cap D)$$
+
+Această validare confirmă consistența logică a simulării.
 
 ```{r}
 prob_D <- mean(df_cereri$D == TRUE)
@@ -76,3 +99,13 @@ cat("Diferenta:          ", abs(prob_reuniune - formula_calculata), "\n")
 ```
 
 Rezultatul confirmă validitatea simulării, diferența fiind neglijabilă (în limita preciziei floating-point).
+
+## Interpretare
+
+Rezultatele obținute evidențiază următoarele aspecte ale sistemului:
+
+1.  **Fiabilitate Ridicată (P(A)):** Sistemul are o rată mare de succes global, datorită mecanismului de retry care compensează eșecurile individuale.
+2.  **Impactul SLA (P(B)):** Probabilitatea de a respecta SLA-ul este, în general, mai mică decât probabilitatea simplă de succes, deoarece retry-urile introduc latență suplimentară.
+3.  **Costul Performanței:** Diferența dintre $P(C)$ și $P(A)$ arată câte cereri necesită efort suplimentar (mai mult de 2 încercări) pentru a reuși.
+4.  **Coerența Modelului:** Validarea relației $P(A \cup D)$ demonstrează că simularea păstrează corect structura probabilistică a evenimentelor dependente.
+
