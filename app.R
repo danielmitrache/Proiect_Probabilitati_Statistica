@@ -303,6 +303,224 @@ ui <- navbarPage(
   
   
   # --------------------------------------------------------------------------
+  # TAB 7: DEPENDENTA (EXERCITIUL 7)
+  # --------------------------------------------------------------------------
+  tabPanel("7. Dependență",
+           sidebarLayout(
+             sidebarPanel(
+               h4("Parametri Simulare Dependență"),
+               numericInput("dep_n_sim", "Număr Simulări (M):", value = 5000, min = 100, step = 500),
+               numericInput("dep_n_max", "Max Încercări (n_max):", value = 3, min = 1, max = 10),
+               sliderInput("dep_p_succes", "Probabilitate Succes (p):", 
+                           min = 0.1, max = 0.99, value = 0.7, step = 0.05),
+               
+               hr(),
+               h5("Parametri de Timp"),
+               numericInput("dep_medie_s", "Medie Procesare Inițială (ms):", value = 150, min = 10),
+               numericInput("dep_backoff", "Timp Backoff Fix (ms):", value = 50, min = 0),
+               numericInput("dep_factor_latenta", "Factor Latență (>1 = dependent):", 
+                            value = 2.0, min = 1.0, max = 5.0, step = 0.1),
+               
+               hr(),
+               helpText("Factor = 1.0: Timpii sunt independenți"),
+               helpText("Factor > 1.0: Latența crește după fiecare eșec (dependență)"),
+               
+               br(),
+               actionButton("btn_dep_simuleaza", "Compară Scenarii", class = "btn-warning btn-lg", width = "100%")
+             ),
+             
+             mainPanel(
+               tabsetPanel(
+                 # Sub-tab 1: Comparație Grafică
+                 tabPanel("Distribuții (7a)",
+                          br(),
+                          h4("Comparație: Independent vs Dependent"),
+                          p("Acest grafic compară distribuția timpului total pentru scenariile:"),
+                          tags$ul(
+                            tags$li(strong("Independent (albastru):"), " Factor = 1.0 - timpii nu depind de eșecuri anterioare"),
+                            tags$li(strong("Dependent (roșu):"), " Factor = ", textOutput("txt_dep_factor", inline = TRUE), 
+                                    " - latența crește după fiecare eșec")
+                          ),
+                          
+                          plotOutput("plot_dep_distributii", height = "450px")
+                 ),
+                 
+                 # Sub-tab 2: Statistici Comparative
+                 tabPanel("Statistici (7b)",
+                          br(),
+                          h4("Statistici Comparative"),
+                          p("Comparația numerică între cele două scenarii:"),
+                          tableOutput("tbl_dep_comparatie"),
+                          
+                          hr(),
+                          div(style = "background-color: #f0f0f0; padding: 15px; border-radius: 5px;",
+                              h5("Interpretare"),
+                              p("În cazul dependent, după fiecare eșec latența medie crește cu factorul specificat."),
+                              p("Aceasta modelează situații reale unde eșecurile succesive degradează performanța sistemului."),
+                              p(strong("Impact observat:"), "Media și varianta timpului total sunt semnificativ mai mari în cazul dependent.")
+                          )
+                 ),
+                 
+                 # Sub-tab 3: Concluzii
+                 tabPanel("Concluzii (7c)",
+                          br(),
+                          h4("Concluzii privind Riscul și Stabilitatea Sistemului"),
+                          
+                          div(style = "background-color: #fff9e6; padding: 20px; border-left: 5px solid #ffa500; margin-bottom: 20px;",
+                              h5(strong("Impact asupra Riscului Operațional")),
+                              p("Dependența dintre încercările succesive crește semnificativ riscul operațional:"),
+                              tags$ul(
+                                tags$li("Timpul mediu de răspuns crește exponențial cu numărul de eșecuri"),
+                                tags$li("Variabilitatea (varianta) este mult mai mare în scenariul dependent"),
+                                tags$li("Probabilitatea de a depăși pragurile SLA crește dramatic")
+                              )
+                          ),
+                          
+                          div(style = "background-color: #ffe6e6; padding: 20px; border-left: 5px solid #dc3545; margin-bottom: 20px;",
+                              h5(strong("Stabilitatea Sistemului")),
+                              p("Degradarea progresivă a performanței indică instabilitate:"),
+                              tags$ul(
+                                tags$li("Sistemul devine mai lent odată ce începe să eșueze"),
+                                tags$li("Riscul de cascadă a eșecurilor (failure cascade)"),
+                                tags$li("Necesitatea de circuit breakers și mecanisme de protecție")
+                              )
+                          ),
+                          
+                          div(style = "background-color: #e6f7ff; padding: 20px; border-left: 5px solid #0066cc;",
+                              h5(strong("Recomandări")),
+                              tags$ul(
+                                tags$li(strong("Monitorizare proactivă:"), " Detectarea timpurie a degradării performanței"),
+                                tags$li(strong("Limite de retry adaptive:"), " Reducerea numărului de încercări când sistemul este sub stres"),
+                                tags$li(strong("Load balancing:"), " Distribuirea sarcinii pentru a evita suprasolicitarea"),
+                                tags$li(strong("Timeout-uri dinamice:"), " Ajustarea pragurilor în funcție de starea sistemului")
+                              )
+                          )
+                 )
+               )
+             )
+           )
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # TAB 9: APROXIMARE (EXERCITIUL 9)
+  # --------------------------------------------------------------------------
+  tabPanel("9. Aproximare",
+           sidebarLayout(
+             sidebarPanel(
+               h4("Parametri Aproximare TLC"),
+               helpText("Teorema Limită Centrală: Suma latențelor tinde spre distribuție normală"),
+               
+               numericInput("aprox_m_zile", "Număr Zile Simulate (M):", value = 1000, min = 100, step = 100),
+               numericInput("aprox_lambda", "Medie Trafic Zilnic (λ):", value = 1000, min = 10),
+               numericInput("aprox_mu", "Medie Latență per Cerere (μ, ms):", value = 150, min = 10),
+               
+               hr(),
+               h5("Parametri Teoretici"),
+               p(strong("Media teoretică:"), "λ × μ"),
+               p(strong("Dev. Std teoretică:"), "√(2λ) × μ"),
+               
+               br(),
+               actionButton("btn_aprox_simuleaza", "Simulează", class = "btn-info btn-lg", width = "100%")
+             ),
+             
+             mainPanel(
+               tabsetPanel(
+                 # Sub-tab 1: Vizualizare Grafică
+                 tabPanel("Histogramă și Aproximare (9a)",
+                          br(),
+                          h4("Distribuția Sumei Totale Zilnice"),
+                          p("Pentru fiecare zi, generăm numărul de cereri (Poisson) și sumăm latențele (Exponențiale)."),
+                          p("Conform TLC, suma totală tinde spre o distribuție normală."),
+                          
+                          plotOutput("plot_aprox_histograma", height = "500px"),
+                          
+                          div(style = "background-color: #e3f2fd; padding: 15px; border-radius: 5px; margin-top: 15px;",
+                              h5("Despre Aproximarea Normală"),
+                              p("Curba roșie reprezintă distribuția normală teoretică."),
+                              p("Histograma albastră reprezintă datele empirice din simulare."),
+                              p("Dacă TLC se aplică, cele două ar trebui să se suprapună bine.")
+                          )
+                 ),
+                 
+                 # Sub-tab 2: Validare Statistică
+                 tabPanel("Validare Statistică (9b)",
+                          br(),
+                          h4("Validare Statistică"),
+                          p("Comparația dintre valorile empirice (din simulare) și cele teoretice (normale):"),
+                          
+                          tableOutput("tbl_aprox_validare"),
+                          
+                          hr(),
+                          div(style = "background-color: #f0f9ff; padding: 20px; border-left: 5px solid #0288d1;",
+                              h5(strong("Formulele Teoretice")),
+                              p(strong("Media teoretică:"), " E[Σ S_i] = E[N] × E[S] = λ × μ"),
+                              p(strong("Varianta teoretică:"), " Var[Σ S_i] = E[N] × Var[S] + Var[N] × E[S]² = λ × μ² + λ × μ² = 2λμ²"),
+                              p(strong("Deviația Standard:"), " σ = √(2λμ²) = √(2λ) × μ")
+                          ),
+                          
+                          hr(),
+                          div(style = "background-color: #fff3e0; padding: 20px; border-left: 5px solid #ff9800;",
+                              h5(strong("Interpretare")),
+                              p("Dacă diferențele sunt mici (< 5%), aproximarea normală este validă."),
+                              p("TLC funcționează bine când λ este suficient de mare (>30 cereri/zi)."),
+                              p("Aceasta permite predicții rapide fără simulări complexe.")
+                          )
+                 )
+               )
+             )
+           )
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # TAB 10: CHURN (EXERCITIUL 10)
+  # --------------------------------------------------------------------------
+  tabPanel("10. Churn",
+           sidebarLayout(
+             sidebarPanel(
+               h4("Parametri Analiză Churn"),
+               numericInput("churn_M", "Număr Utilizatori (M):", value = 10000, min = 100, step = 1000),
+               
+               hr(),
+               h5("1. Churn Aleator"),
+               numericInput("churn_q", "Rata Churn Aleator (q):", value = 0.05, min = 0.01, max = 0.5, step = 0.01),
+               helpText("Probabilitatea că un utilizator pleacă din motive externe"),
+               
+               hr(),
+               h5("2. Churn Condiționat de Performanță"),
+               numericInput("churn_m", "Fereastră Monitorizare (m cereri):", value = 20, min = 5, max = 100),
+               numericInput("churn_k", "Prag Erori (k):", value = 5, min = 1, max = 50),
+               sliderInput("churn_p_succes", "Probabilitate Succes Tehnic (p):", 
+                           min = 0.5, max = 0.99, value = 0.9, step = 0.01),
+               helpText("Utilizatorul pleacă dacă are ≥ k esecuri în m încercări"),
+               
+               br(),
+               actionButton("btn_churn_calculeaza", "Calculează Rate Churn", class = "btn-primary btn-lg", width = "100%")
+             ),
+             
+             mainPanel(
+               h3("Rezultate Analiză Churn"),
+               
+               tableOutput("tbl_churn_rate"),
+               
+               hr(),
+               h4("Explicație Detaliată"),
+               verbatimTextOutput("txt_churn_explicatie"),
+               
+               hr(),
+               div(style = "background-color: #fff3cd; padding: 15px; border-radius: 5px;",
+                   h5("Modelul de Churn"),
+                   p(strong("Churn Aleator:"), "Modelat cu distribuție Bernoulli (q)."),
+                   p(strong("Churn Condiționat:"), "Bazat pe numărul de eșecuri (Binomial)."),
+                   p(strong("Churn Total:"), "Reuniunea celor două evenimente (operatorul OR logic).")
+               )
+             )
+           )
+  ),
+  
+  
+  # --------------------------------------------------------------------------
   # TAB 12: VIZUALIZARE STATISTICA (Exercitiul 12) - PARAMETRI COMPLETI
   # --------------------------------------------------------------------------
   tabPanel("12. Vizualizare",
@@ -373,7 +591,14 @@ server <- function(input, output, session) {
     ev_df = NULL,
     # Rezultate Ex 8
     in_rez = NULL,      # lista raw
-    in_teoretic = NULL  # valori teoretice
+    in_teoretic = NULL, # valori teoretice
+    # Rezultate Ex 7 - Dependenta
+    dep_timp_indep = NULL,
+    dep_timp_dep = NULL,
+    # Rezultate Ex 9 - Aproximare
+    aprox_sume = NULL,
+    # Rezultate Ex 10 - Churn
+    churn_rezultate = NULL
   )
   
   # --- LOGICA TRAFIC (Ex 1) ---
@@ -771,6 +996,194 @@ server <- function(input, output, session) {
   # Output-uri text mici pentru descriere
   output$txt_n_max_A <- renderText({ input$viz_n_max_A })
   output$txt_n_max_B <- renderText({ input$viz_n_max_B })
+  
+  # ============================================================================
+  # EXERCITIUL 7: DEPENDENTA - Server Logic
+  # ============================================================================
+  
+  # Server logic pentru Ex 7 - Dependenta
+  observeEvent(input$btn_dep_simuleaza, {
+    # Simulare cazul INDEPENDENT (factor = 1.0)
+    rv$dep_timp_indep <- replicate(input$dep_n_sim, 
+                                    simuleaza_cerere_dependenta(
+                                      n_max = input$dep_n_max,
+                                      p_succes = input$dep_p_succes,
+                                      medie_S_initial = input$dep_medie_s,
+                                      backoff_fix = input$dep_backoff,
+                                      factor_latenta = 1.0
+                                    ))
+    
+    # Simulare cazul DEPENDENT (factor = input)
+    rv$dep_timp_dep <- replicate(input$dep_n_sim,
+                                  simuleaza_cerere_dependenta(
+                                    n_max = input$dep_n_max,
+                                    p_succes = input$dep_p_succes,
+                                    medie_S_initial = input$dep_medie_s,
+                                    backoff_fix = input$dep_backoff,
+                                    factor_latenta = input$dep_factor_latenta
+                                  ))
+  })
+  
+  output$plot_dep_distributii <- renderPlot({
+    req(rv$dep_timp_indep, rv$dep_timp_dep)
+    
+    # Limitare axa X pentru vizualizare
+    x_max <- quantile(rv$dep_timp_dep, 0.99)
+    
+    par(mfrow = c(1, 1))
+    plot(density(rv$dep_timp_dep), col = "red", lwd = 2, 
+         xlim = c(0, x_max),
+         main = "Comparație: Independent vs Dependent",
+         xlab = "Timp Total (ms)", ylab = "Densitate")
+    lines(density(rv$dep_timp_indep), col = "blue", lwd = 2)
+    legend("topright", 
+           legend = c("Dependent", "Independent"), 
+           col = c("red", "blue"), 
+           lwd = 2)
+  })
+  
+  output$tbl_dep_comparatie <- renderTable({
+    req(rv$dep_timp_indep, rv$dep_timp_dep)
+    
+    data.frame(
+      Scenariu = c("Independent (factor=1.0)", 
+                   paste0("Dependent (factor=", input$dep_factor_latenta, ")")),
+      Media = c(mean(rv$dep_timp_indep), mean(rv$dep_timp_dep)),
+      Varianta = c(var(rv$dep_timp_indep), var(rv$dep_timp_dep)),
+      Dev_Std = c(sd(rv$dep_timp_indep), sd(rv$dep_timp_dep))
+    )
+  })
+  
+  # ============================================================================
+  # EXERCITIUL 9: APROXIMARE - Server Logic
+  # ============================================================================
+  
+  # Server logic pentru Ex 9 - Aproximare
+  observeEvent(input$btn_aprox_simuleaza, {
+    rv$aprox_sume <- replicate(input$aprox_m_zile,
+                                simuleaza_suma_totala(
+                                  lambda_trafic = input$aprox_lambda,
+                                  medie_latenta = input$aprox_mu
+                                ))
+  })
+  
+  output$plot_aprox_histograma <- renderPlot({
+    req(rv$aprox_sume)
+    
+    # Parametri teoretici pentru distributia normala
+    media_teoretic <- input$aprox_lambda * input$aprox_mu
+    sd_teoretic <- sqrt(2 * input$aprox_lambda) * input$aprox_mu
+    
+    par(mfrow = c(1, 1))
+    hist(rv$aprox_sume, 
+         probability = TRUE,
+         breaks = 30,
+         col = "cornflowerblue",
+         border = "white",
+         main = "Latență Totală Zilnică cu Aproximare Normală",
+         xlab = "Latență Totală (ms/zi)",
+         ylab = "Densitate")
+    
+    # Adaugam curba teoretica normala
+    curve(dnorm(x, mean = media_teoretic, sd = sd_teoretic),
+          add = TRUE,
+          col = "red",
+          lwd = 2)
+    
+    legend("topright",
+           legend = c("Date Empirice", "Aproximare Normală"),
+           col = c("cornflowerblue", "red"),
+           lwd = c(10, 2))
+  })
+  
+  output$tbl_aprox_validare <- renderTable({
+    req(rv$aprox_sume)
+    
+    # Statistici empirice
+    media_emp <- mean(rv$aprox_sume)
+    sd_emp <- sd(rv$aprox_sume)
+    
+    # Statistici teoretice
+    media_teor <- input$aprox_lambda * input$aprox_mu
+    sd_teor <- sqrt(2 * input$aprox_lambda) * input$aprox_mu
+    
+    data.frame(
+      Indicator = c("Media", "Deviație Standard"),
+      Empiric = c(media_emp, sd_emp),
+      Teoretic = c(media_teor, sd_teor),
+      Diferenta = c(abs(media_emp - media_teor), abs(sd_emp - sd_teor))
+    )
+  })
+  
+  # ============================================================================
+  # EXERCITIUL 10: CHURN - Server Logic
+  # ============================================================================
+  
+  # Server logic pentru Ex 10 - Churn
+  observeEvent(input$btn_churn_calculeaza, {
+    # Simulare churn aleator
+    churn_aleator_vec <- replicate(input$churn_M,
+                                    simuleaza_churn_aleator(q = input$churn_q))
+    
+    # Simulare churn conditionat
+    churn_cond_vec <- replicate(input$churn_M,
+                                 simuleaza_churn_conditionat(
+                                   m = input$churn_m,
+                                   k = input$churn_k,
+                                   p_succes = input$churn_p_succes
+                                 ))
+    
+    # Churn total (reuniune)
+    churn_total_vec <- (churn_aleator_vec | churn_cond_vec)
+    
+    # Salvare rezultate
+    rv$churn_rezultate <- list(
+      prob_aleator = mean(churn_aleator_vec),
+      prob_cond = mean(churn_cond_vec),
+      prob_total = mean(churn_total_vec),
+      nr_total_utilizatori = input$churn_M
+    )
+  })
+  
+  output$tbl_churn_rate <- renderTable({
+    req(rv$churn_rezultate)
+    
+    r <- rv$churn_rezultate
+    
+    data.frame(
+      Tip_Churn = c("Churn Aleator (q)", 
+                    "Churn Condiționat (Erori Tehnice)", 
+                    "Churn TOTAL (A ∪ B)"),
+      Probabilitate = c(r$prob_aleator, r$prob_cond, r$prob_total),
+      Nr_Utilizatori_Estimat = c(
+        round(r$prob_aleator * r$nr_total_utilizatori),
+        round(r$prob_cond * r$nr_total_utilizatori),
+        round(r$prob_total * r$nr_total_utilizatori)
+      )
+    )
+  })
+  
+  output$txt_churn_explicatie <- renderText({
+    req(rv$churn_rezultate)
+    
+    paste0(
+      "Rezultate pentru M = ", input$churn_M, " utilizatori:\n\n",
+      "• Churn Aleator: Utilizatori care părăsesc platforma din motive externe (job, ",
+      "preferințe personale, etc.)\n",
+      "  Probabilitate q = ", input$churn_q, "\n\n",
+      "• Churn Condiționat: Utilizatori care părăsesc din cauza performanței tehnice slabe\n",
+      "  Parametri: m = ", input$churn_m, " cereri, prag k = ", input$churn_k, 
+      " erori, p_succes = ", input$churn_p_succes, "\n\n",
+      "• Churn Total: Utilizatori care pleacă din oricare motiv (reuniune evenimentelor)\n\n",
+      "Notă: Rata totală NU este suma celor două rate individuale, ",
+      "deoarece unii utilizatori pot fi afectați de ambele tipuri de churn simultan."
+    )
+  })
+  
+  # Output pentru afisarea factorului in UI (Tab 7)
+  output$txt_dep_factor <- renderText({
+    input$dep_factor_latenta
+  })
 }
 
 shinyApp(ui = ui, server = server)
