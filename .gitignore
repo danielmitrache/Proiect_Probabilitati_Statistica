@@ -8,6 +8,7 @@
 *.pdf
 *.html
 *.docx
+!documentatie.pdf
 
 # Fisiere temporare de la compilarea LaTeX
 *.tex
@@ -16,3 +17,6 @@
 *.out
 *_cache/
 *_files/
+
+# Documentatie veche
+old_docs/

@@ -1,10 +1,10 @@
 ---
 title: "Analiza probabilistică a performanței unui serviciu online"
-author: 
-  - "Mitrache Antonie Daniel"
-  - "Folea Alexandru"
-  - "Ene Andrei Tudor"
-  - "Smadu Andrei"
+author: |
+  **Mitrache Antonie Daniel** \
+  Folea Alexandru \
+  Ene Andrei Tudor \
+  Smadu Andrei
 date: "Ianuarie 2026"
 output:
   pdf_document:
@@ -2084,3 +2084,61 @@ Cei mai influenți parametri identificați sunt:
 *   **Backoff Adaptiv:** În loc de backoff fix/exponențial simplu, sistemul să primească feedback de la server (ex: 'retry-after' header).
 *   **Prioritizare Inteligentă:** Cererile clienților fideli (Customer Lifetime Value mare) să aibă prioritate la resurse în momentele de criză.
 
+
+
+# 15. Bibliografie si resurse utile
+
+## Pachete Software
+Pentru realizarea simulărilor și a vizualizărilor grafice, am utilizat limbajul **R** împreună cu următoarele pachete:
+* **Base R:** Pentru simulările Monte Carlo, generarea variabilelor aleatoare (`rnorm`, `rexp`, `rpois`, `rbinom`) și graficele standard (`hist`, `boxplot`, `plot`).
+* **Knitr / RMarkdown:** Pentru generarea automată a acestui raport și formatarea tabelelor (`kable`).
+* **Shiny:** Pentru realizarea interfeței grafice interactive.
+
+
+## Surse de Inspirație
+1.  Cursul de Probabilități și Statistică (FMI, Unibuc) – pentru definițiile teoretice ale repartițiilor și inegalităților.
+2.  Documentația oficială R (CRAN) – pentru parametrizarea funcțiilor de distribuție.
+3.  *StackOverflow* și *R-bloggers* – pentru optimizarea buclelor `replicate` și formatarea graficelor suprapuse.
+
+
+
+# 16. Dificultăți Întâmpinate
+
+Pe parcursul realizării proiectului, echipa s-a confruntat cu următoarele provocări:
+
+1.  **Alegerea parametrilor realiști:** A fost dificil să calibrăm parametrii simulării (ex: `lambda`, `t0`, `backoff`) astfel încât diferențele dintre scenarii (ex: Poisson vs Binomial sau Independent vs Dependent) să fie vizibile grafic, dar să rămână plauzibile pentru un sistem real.
+2.  **Gestionarea simulărilor imbricate:** Implementarea Churn-ului condiționat a necesitat simularea unei istorii pentru fiecare utilizator, ceea ce a crescut complexitatea computațională. A trebuit să optimizăm codul folosind funcții vectorizate (`replicate`, `sapply`) în loc de bucle `for` excesive pentru a menține timpul de rulare rezonabil.
+3.  **Interpretarea rezultatelor contraintuitive:** Inițial, rezultatele inegalității lui Jensen păreau paradoxale (media costurilor > costul mediei), necesitând o aprofundare a teoriei funcțiilor convexe pentru a interpreta corect riscul economic.
+
+
+# 16. Probleme Deschise și Limitări
+
+Deși modelul surprinde aspectele principale, există simplificări care constituie probleme deschise pentru versiuni viitoare:
+
+1.  **Concurența resurselor:** Modelul actual nu simulează coada de așteptare la nivel de CPU/RAM. Timpul de răspuns $S_i$ este generat independent, dar în realitate, dacă 1000 de clienți vin simultan, $S_i$ ar trebui să crească pentru toți (model de tip *Queueing Theory* M/M/n).
+2.  **Variabilitatea traficului intraday:** Traficul este modelat global pe zi ($\lambda$ constant). Nu am modelat orele de vârf (ex: seara) vs. orele de liniște (noaptea), care ar putea declanșa Churn-ul mai agresiv în ferestre scurte de timp.
+3.  **Heterogenitatea utilizatorilor:** Am presupus că toți utilizatorii au aceeași toleranță la erori ($k$). Un model mai complex ar segmenta utilizatorii în categorii (Premium vs Free) cu comportamente diferite de abandon.
+
+
+# 17. Concluzii
+
+În cadrul acestui proiect, am modelat și simulat comportamentul probabilistic al unui serviciu online, analizând interdependența dintre parametrii tehnici (latență, erori, retry-uri) și indicatorii de performanță economică (profit, churn).
+
+Principalele concluzii desprinse din studiul nostru sunt:
+
+1.  **Validitatea Simulării Monte Carlo:**
+    Prin utilizarea Legii Numerelor Mari, am demonstrat că probabilitățile empirice obținute din simulări ample ($M \ge 10.000$) converg către valorile teoretice. Aceasta validează simularea ca instrument de decizie în scenarii complexe unde calculul analitic este dificil (ex: sisteme cu dependențe și backoff variabil).
+
+2.  **Mitul „Mediei” în IT:**
+    Analiza distribuțiilor timpilor de răspuns (Exponențial vs. Normal) și aplicarea **Inegalității lui Jensen** au relevat că „timpul mediu” este un indicator înșelător. Într-un sistem cu distribuție *Long Tail*, media ascunde outlierii critici care cauzează frustrarea utilizatorilor. Am arătat că mediana reflectă mai bine experiența utilizatorului tipic, în timp ce media costurilor ($E[\varphi(T)]$) este sistematic mai mare decât costul mediei ($\varphi(E[T])$).
+
+3.  **Pericolul Dependențelor:**
+    Comparația dintre scenariile independente și cele dependente a arătat că eșecurile care induc latență suplimentară (degradare în cascadă) cresc varianța sistemului exponențial. Aceasta duce la o instabilitate majoră și face imposibilă garantarea unor SLA-uri stricte fără mecanisme de protecție (ex: Circuit Breakers).
+
+4.  **Compromisul Tehnico-Economic (Pragul de 90%):**
+    Analiza de senzitivitate a demonstrat o relație neliniară între calitatea tehnică și profit. Am identificat un **punct critic (Break-even Point)** la o rată de succes de aproximativ **90%**. Sub acest prag, costurile generate de pierderea clienților (Churn) depășesc veniturile, indiferent de volumul de trafic. Peste acest prag, profitul se stabilizează, indicând că investițiile tehnice au un randament descrescător după un anumit nivel de excelență.
+
+5.  **Strategia de Retry:**
+    Analiza comparativă a scenariilor *Standard* (Retry=3) vs. *Fail-Fast* (Retry=0) a evidențiat că retry-urile cresc rata de succes final, dar cu prețul unei latențe mult mai mari în caz de eșec (cozi lungi în distribuția T). Alegerea strategiei optime depinde strict de natura aplicației: *Fail-Fast* pentru sisteme interactive predictibile, *Retry* pentru procese de fundal critice.
+
+În concluzie, proiectul demonstrează că deciziile de arhitectură software nu pot fi luate izolat de modelarea probabilistică a traficului și de constrângerile economice. Un sistem robust nu este doar unul care funcționează, ci unul care își gestionează eficient riscurile și variabilitatea.

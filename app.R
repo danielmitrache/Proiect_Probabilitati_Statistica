@@ -154,147 +154,132 @@ ui <- navbarPage(
              )
            )
   ),
+
   
   # --------------------------------------------------------------------------
-  # TAB 8: INEGALITATI (EXERCITIUL 8)
+  #TAB 4: BIVARIANTA (N, F) (EXERCITIUL 4)
   # --------------------------------------------------------------------------
-  tabPanel("8. Inegalități",
+  
+  tabPanel("4. (N,F)",
            sidebarLayout(
              sidebarPanel(
-               h4("Verificare Inegalități"),
-               numericInput("in_n_sim", "Nr Simulări:", value = 5000),
-               
-               h5("Parametri Sistem"),
-               numericInput("in_n_max", "Max Încercări:", value = 5),
-               sliderInput("in_p", "Probabilitate Succes:", min = 0.1, max = 0.99, value = 0.4),
-               numericInput("in_mu", "Medie Procesare:", value = 100),
-               numericInput("in_bf", "Backoff:", value = 20),
-               numericInput("in_fact", "Factor Latență:", value = 1.5, step = 0.1),
+               h4("Parametri Simualare (N,F)"),
+               numericInput("nf_M","Număr Simulări (M):",value=5000,step=500,min=500),
+               numericInput("nf_n_max","Max Incercări(n_max):", value=3, min=1, max=10),
+               sliderInput("nf_p_succes","Probabilitate Succes (p):",min=0.1,max=0.99,value=0.7,step=0.05),
                
                hr(),
-               h5("Parametri Bounds"),
-               numericInput("in_markov_alpha", "Markov (a = alpha * E[T]):", value = 2.0, step = 0.5),
-               numericInput("in_ceb_k", "Cebîșev (k deviatii):", value = 2, min = 1),
+               h5("Parametri de Timp (ms):"),
+               numericInput("nf_t0","Prag SLA (t0):",value=400),
+               numericInput("nf_medie_s","Medie Procesare(S):", value=150),
+               numericInput("nf_backoff","Timp Backoff Fix:",value=50),
                
-               actionButton("btn_sim_inegalitati", "Verifică Bounds", class = "btn-danger")
+               actionButton("btn_sim_nf","Generează (N,F)", class ="btn-primary")
              ),
-             
              mainPanel(
-               h3("Statistici Desciptive"),
-               verbatimTextOutput("txt_in_stats"),
-               
-               hr(),
-               h3("Verificare Bounds"),
-               tableOutput("tbl_in_bounds"),
-               
-               hr(),
-               h3("Inegalitatea lui Jensen"),
-               p("Verificare pentru functia convexa phi(x) = x^2"),
-               verbatimTextOutput("txt_in_jensen")
+               tabsetPanel(
+                 tabPanel("Distribuții",
+                          h4("Distribuția comună P(N=n, F=f) (empiric)"),
+                          tableOutput("tbl_nf_joint"),
+                          
+                          hr(),
+                          h4("Distribuții marginale"),
+                          fluidRow(
+                            column(6,h5("P(N=n)"),tableOutput("tbl_nf_marg_N")),
+                            column(6,h5("P(F=f)"),tableOutput("tbl_nf_marg_F"))
+                          )
+                 ),
+                 tabPanel("Test Independență",
+                          h4("Test Chi-patrat pentru independență (N,F)"),
+                          verbatimTextOutput("txt_nf_chi")
+                 ),
+                 tabPanel("Vizualizare",
+                          h4("Heatmap+Mosaicplot"),
+                          plotOutput("plot_nf_heat_mosaic",height="450px")
+                 )
+               )
              )
            )
   ),
   
   # --------------------------------------------------------------------------
-  # TAB 11: IMPACT ECONOMIC (Exercitiul 11) - CONTROL TOTAL
+  # TAB 5: BIVARIANTA (N, T) (EXERCITIUL 5)
   # --------------------------------------------------------------------------
-  tabPanel("11. Impact Economic",
+  tabPanel("5. (N, T)",
            sidebarLayout(
              sidebarPanel(
-               # --- GRUP 1: TRAFIC ---
-               h4("1. Model Trafic"),
-               selectInput("eco_trafic_model", "Tip Distribuție:", 
-                           choices = c("Poisson" = "poisson", "Binomială" = "binomiala")),
-               
-               # Afisam conditionat in functie de model
-               conditionalPanel(
-                 condition = "input.eco_trafic_model == 'poisson'",
-                 numericInput("eco_trafic_lambda", "Medie Clienți (Lambda):", value = 1000, min = 10)
-               ),
-               conditionalPanel(
-                 condition = "input.eco_trafic_model == 'binomiala'",
-                 numericInput("eco_trafic_bin_n", "Capacitate Max (N):", value = 2000, min = 100),
-                 numericInput("eco_trafic_bin_p", "Probabilitate (p):", value = 0.5, min = 0, max = 1, step = 0.05)
-               ),
+               h4("Parametri Simulare (N, T)"),
+               numericInput("nt_M", "Număr Simulări (M):", value = 5000, step = 500, min = 500),
+               numericInput("nt_n_max", "Max Încercări (n_max):", value = 3, min = 1, max = 10),
+               sliderInput("nt_p_succes", "Probabilitate Succes (p):", min = 0.1, max = 0.99, value = 0.7, step = 0.05),
                
                hr(),
+               h5("Parametri de Timp (ms):"),
+               numericInput("nt_t0", "Prag SLA (t0):", value = 400),
+               numericInput("nt_medie_s", "Medie Procesare (S):", value = 150),
+               numericInput("nt_backoff", "Timp Backoff Fix:", value = 50),
                
-               # --- GRUP 2: PERFORMANTA TEHNICA ---
-               h4("2. Performanță Tehnică"),
-               numericInput("eco_medie_s", "Viteză Server (Medie S ms):", value = 150, min = 10),
-               numericInput("eco_t0", "Timeout Tehnic (t0 ms):", value = 500, min = 50),
-               numericInput("eco_n_max", "Max Retry-uri (N_max):", value = 3, min = 1),
-               numericInput("eco_backoff", "Backoff (ms):", value = 50, min = 0),
-               
-               hr(),
-               
-               # --- GRUP 3: CHURN (PLECARE CLIENTI) ---
-               h4("3. Comportament Churn"),
-               numericInput("eco_dim_churn", "Fereastra Monitorizare (m):", value = 20, min = 5),
-               numericInput("eco_prag_churn", "Prag Erori (k):", value = 5, min = 1),
-               sliderInput("eco_churn_rate", "Rata Churn Aleator:", min = 0.000, max = 0.1, value = 0.001, step = 0.001),
-               
-               hr(),
-               
-               # --- GRUP 4: FINANCIAR ---
-               h4("4. Parametri Financiari"),
-               numericInput("eco_castig", "Câștig per Succes (EUR):", value = 2.0, step = 0.1),
-               numericInput("eco_cost_churn", "Cost Churn (Pierdere Client):", value = 40, step = 5),
-               numericInput("eco_cost_sla", "Penalizare SLA:", value = 2.0, step = 0.5),
-               
-               hr(),
-               
-               # --- GRUP 5: SIMULARE SI VARIABILE ---
-               h4("5. Setări Simulare (Senzitivitate)"),
-               
-               numericInput("eco_n_zile", "Durata Simulare (zile):", value = 100, min = 10),
-               
-               # AICI ESTE PARAMETRUL prob_succes_churn_cond
-               helpText("Slider-ul de mai jos controlează 'Probabilitate Succes (Churn Cond)' pe axa X."),
-               sliderInput("eco_range", "Interval Rata Succes (Start - Final):", 
-                           min = 0.80, max = 0.99, value = c(0.85, 0.99), step = 0.01),
-               
-               br(),
-               actionButton("btn_sim_economic", "Generează Analiza", class = "btn-success btn-lg", width = "100%")
+               actionButton("btn_sim_nt", "Generează (N, T)", class = "btn-primary")
              ),
              
              mainPanel(
                tabsetPanel(
-                 # Tab existent - Grafic
-                 tabPanel("Analiza Senzitivitate (11c)",
-                          br(),
-                          plotOutput("plot_eco_senzitivitate", height = "450px"),
-                          p(class="text-info", "Graficul arată cum evoluează media profitului când variem calitatea tehnică.")
+                 tabPanel("Scatterplot",
+                          h4("Reprezentare: N vs T"),
+                          plotOutput("plot_nt_scatter", height = "450px")
                  ),
                  
-                 # Tab existent - Date
-                 tabPanel("Date Grafic",
-                          h4("Datele din spatele graficului"),
-                          tableOutput("tbl_eco_data")
+                 tabPanel("Statistici",
+                          h4("Medii / Var / Cov / Corelație"),
+                          tableOutput("tbl_nt_stats"),
+                          hr(),
+                          verbatimTextOutput("txt_nt_interp")
+                 )
+               )
+             )
+           )
+  ),
+  
+  # --------------------------------------------------------------------------
+  # TAB 6: CONDITIONARI (EXERCITIUL 6)
+  # --------------------------------------------------------------------------
+  tabPanel("6. Condiționări",
+           sidebarLayout(
+             sidebarPanel(
+               h4("Parametri Simulare (condiționări)"),
+               numericInput("cond_M", "Număr Simulări (M):", value = 5000, step = 500, min = 500),
+               numericInput("cond_n_max", "Max Încercări (n_max):", value = 3, min = 1, max = 10),
+               sliderInput("cond_p_succes", "Probabilitate Succes (p):", min = 0.1, max = 0.99, value = 0.7, step = 0.05),
+               
+               hr(),
+               h5("Parametri de Timp (ms):"),
+               numericInput("cond_t0", "Prag SLA (t0):", value = 400),
+               numericInput("cond_medie_s", "Medie Procesare (S):", value = 150),
+               numericInput("cond_backoff", "Timp Backoff Fix:", value = 50),
+               
+               hr(),
+               h5("Prag pentru N (n0):"),
+               numericInput("cond_n0", "n0 (pentru evenimentul C: N <= n0):", value = 2, min = 1, max = 10),
+               
+               actionButton("btn_sim_cond", "Calculează condiționări", class = "btn-success")
+             ),
+             
+             mainPanel(
+               tabsetPanel(
+                 tabPanel("Probabilități",
+                          h4("Probabilități condiționate"),
+                          tableOutput("tbl_cond_probs")
                  ),
                  
-                 # --- TAB NOU PENTRU CERINTA 11 b) ---
-                 tabPanel("Statistici Punctuale (11b)",
-                          br(),
-                          h4("Analiza detaliată pentru o rată de succes fixă"),
-                          p("Aici analizăm distribuția profitului zilnic pentru un scenariu specific."),
-                          
-                          # Input specific pentru acest tab
-                          wellPanel(
-                            fluidRow(
-                              column(6, 
-                                     numericInput("eco_fixed_p", "Alege Rata de Succes de analizat (p):", 
-                                                  value = 0.95, min = 0.1, max = 1.0, step = 0.01)
-                              ),
-                              column(6,
-                                     h5("Rezultate:"),
-                                     verbatimTextOutput("txt_eco_stats_fix")
-                              )
-                            )
-                          ),
-                          
-                          h4("Distribuția Profitului Zilnic"),
-                          plotOutput("plot_eco_hist_fix")
+                 tabPanel("Speranțe condiționate",
+                          h4("E(T | I = 1) și E(T | I = 0)"),
+                          tableOutput("tbl_cond_expect"),
+                          hr(),
+                          plotOutput("plot_cond_box", height = "350px")
+                 ),
+                 
+                 tabPanel("Interpretare",
+                          verbatimTextOutput("txt_cond_interp")
                  )
                )
              )
@@ -397,6 +382,46 @@ ui <- navbarPage(
                           )
                  )
                )
+             )
+           )
+  ),
+  
+  # --------------------------------------------------------------------------
+  # TAB 8: INEGALITATI (EXERCITIUL 8)
+  # --------------------------------------------------------------------------
+  tabPanel("8. Inegalități",
+           sidebarLayout(
+             sidebarPanel(
+               h4("Verificare Inegalități"),
+               numericInput("in_n_sim", "Nr Simulări:", value = 5000),
+               
+               h5("Parametri Sistem"),
+               numericInput("in_n_max", "Max Încercări:", value = 5),
+               sliderInput("in_p", "Probabilitate Succes:", min = 0.1, max = 0.99, value = 0.4),
+               numericInput("in_mu", "Medie Procesare:", value = 100),
+               numericInput("in_bf", "Backoff:", value = 20),
+               numericInput("in_fact", "Factor Latență:", value = 1.5, step = 0.1),
+               
+               hr(),
+               h5("Parametri Bounds"),
+               numericInput("in_markov_alpha", "Markov (a = alpha * E[T]):", value = 2.0, step = 0.5),
+               numericInput("in_ceb_k", "Cebîșev (k deviatii):", value = 2, min = 1),
+               
+               actionButton("btn_sim_inegalitati", "Verifică Bounds", class = "btn-danger")
+             ),
+             
+             mainPanel(
+               h3("Statistici Desciptive"),
+               verbatimTextOutput("txt_in_stats"),
+               
+               hr(),
+               h3("Verificare Bounds"),
+               tableOutput("tbl_in_bounds"),
+               
+               hr(),
+               h3("Inegalitatea lui Jensen"),
+               p("Verificare pentru functia convexa phi(x) = x^2"),
+               verbatimTextOutput("txt_in_jensen")
              )
            )
   ),
@@ -514,6 +539,113 @@ ui <- navbarPage(
                    p(strong("Churn Aleator:"), "Modelat cu distribuție Bernoulli (q)."),
                    p(strong("Churn Condiționat:"), "Bazat pe numărul de eșecuri (Binomial)."),
                    p(strong("Churn Total:"), "Reuniunea celor două evenimente (operatorul OR logic).")
+               )
+             )
+           )
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # TAB 11: IMPACT ECONOMIC (Exercitiul 11) - CONTROL TOTAL
+  # --------------------------------------------------------------------------
+  tabPanel("11. Impact Economic",
+           sidebarLayout(
+             sidebarPanel(
+               # --- GRUP 1: TRAFIC ---
+               h4("1. Model Trafic"),
+               selectInput("eco_trafic_model", "Tip Distribuție:", 
+                           choices = c("Poisson" = "poisson", "Binomială" = "binomiala")),
+               
+               # Afisam conditionat in functie de model
+               conditionalPanel(
+                 condition = "input.eco_trafic_model == 'poisson'",
+                 numericInput("eco_trafic_lambda", "Medie Clienți (Lambda):", value = 1000, min = 10)
+               ),
+               conditionalPanel(
+                 condition = "input.eco_trafic_model == 'binomiala'",
+                 numericInput("eco_trafic_bin_n", "Capacitate Max (N):", value = 2000, min = 100),
+                 numericInput("eco_trafic_bin_p", "Probabilitate (p):", value = 0.5, min = 0, max = 1, step = 0.05)
+               ),
+               
+               hr(),
+               
+               # --- GRUP 2: PERFORMANTA TEHNICA ---
+               h4("2. Performanță Tehnică"),
+               numericInput("eco_medie_s", "Viteză Server (Medie S ms):", value = 150, min = 10),
+               numericInput("eco_t0", "Timeout Tehnic (t0 ms):", value = 500, min = 50),
+               numericInput("eco_n_max", "Max Retry-uri (N_max):", value = 3, min = 1),
+               numericInput("eco_backoff", "Backoff (ms):", value = 50, min = 0),
+               
+               hr(),
+               
+               # --- GRUP 3: CHURN (PLECARE CLIENTI) ---
+               h4("3. Comportament Churn"),
+               numericInput("eco_dim_churn", "Fereastra Monitorizare (m):", value = 20, min = 5),
+               numericInput("eco_prag_churn", "Prag Erori (k):", value = 5, min = 1),
+               sliderInput("eco_churn_rate", "Rata Churn Aleator:", min = 0.000, max = 0.1, value = 0.001, step = 0.001),
+               
+               hr(),
+               
+               # --- GRUP 4: FINANCIAR ---
+               h4("4. Parametri Financiari"),
+               numericInput("eco_castig", "Câștig per Succes (EUR):", value = 2.0, step = 0.1),
+               numericInput("eco_cost_churn", "Cost Churn (Pierdere Client):", value = 40, step = 5),
+               numericInput("eco_cost_sla", "Penalizare SLA:", value = 2.0, step = 0.5),
+               
+               hr(),
+               
+               # --- GRUP 5: SIMULARE SI VARIABILE ---
+               h4("5. Setări Simulare (Senzitivitate)"),
+               
+               numericInput("eco_n_zile", "Durata Simulare (zile):", value = 10, min = 5),
+               
+               # AICI ESTE PARAMETRUL prob_succes_churn_cond
+               helpText("Slider-ul de mai jos controlează 'Probabilitate Succes (Churn Cond)' pe axa X."),
+               sliderInput("eco_range", "Interval Rata Succes (Start - Final):", 
+                           min = 0.80, max = 0.99, value = c(0.85, 0.99), step = 0.01),
+               
+               br(),
+               actionButton("btn_sim_economic", "Generează Analiza", class = "btn-success btn-lg", width = "100%")
+             ),
+             
+             mainPanel(
+               tabsetPanel(
+                 # Tab existent - Grafic
+                 tabPanel("Analiza Senzitivitate (11c)",
+                          br(),
+                          plotOutput("plot_eco_senzitivitate", height = "450px"),
+                          p(class="text-info", "Graficul arată cum evoluează media profitului când variem calitatea tehnică.")
+                 ),
+                 
+                 # Tab existent - Date
+                 tabPanel("Date Grafic",
+                          h4("Datele din spatele graficului"),
+                          tableOutput("tbl_eco_data")
+                 ),
+                 
+                 # --- TAB NOU PENTRU CERINTA 11 b) ---
+                 tabPanel("Statistici Punctuale (11b)",
+                          br(),
+                          h4("Analiza detaliată pentru o rată de succes fixă"),
+                          p("Aici analizăm distribuția profitului zilnic pentru un scenariu specific."),
+                          
+                          # Input specific pentru acest tab
+                          wellPanel(
+                            fluidRow(
+                              column(6, 
+                                     numericInput("eco_fixed_p", "Alege Rata de Succes de analizat (p):", 
+                                                  value = 0.95, min = 0.1, max = 1.0, step = 0.01)
+                              ),
+                              column(6,
+                                     h5("Rezultate:"),
+                                     verbatimTextOutput("txt_eco_stats_fix")
+                              )
+                            )
+                          ),
+                          
+                          h4("Distribuția Profitului Zilnic"),
+                          plotOutput("plot_eco_hist_fix")
+                 )
                )
              )
            )
@@ -1177,6 +1309,202 @@ server <- function(input, output, session) {
       "• Churn Total: Utilizatori care pleacă din oricare motiv (reuniune evenimentelor)\n\n",
       "Notă: Rata totală NU este suma celor două rate individuale, ",
       "deoarece unii utilizatori pot fi afectați de ambele tipuri de churn simultan."
+    )
+  })
+  
+  # --------------------------------------------------------------------------
+  # EXERCITIILE 4, 5, 6 (N,F) / (N,T) / CONDITIONARI
+  # --------------------------------------------------------------------------
+  rv_456 <- reactiveValues(
+    nf_df = NULL,
+    nt_df = NULL,
+    cond_df = NULL
+  )
+  
+  # --- LOGICA (N, F) (Ex 4) ---
+  observeEvent(input$btn_sim_nf, {
+    rv_456$nf_df <- simuleaza_NF_din_ex3(
+      M = input$nf_M,
+      n_max = input$nf_n_max,
+      p_succes = input$nf_p_succes,
+      t_0 = input$nf_t0,
+      medie_S = input$nf_medie_s,
+      backoff_fix = input$nf_backoff
+    )
+  })
+  
+  output$tbl_nf_joint <- renderTable({
+    req(rv_456$nf_df)
+    tab <- prop.table(table(rv_456$nf_df$N, rv_456$nf_df$F))
+    mat <- as.matrix(round(tab, 4))
+    data.frame(N = rownames(mat), mat, check.names = FALSE)
+  })
+  
+  output$tbl_nf_marg_N <- renderTable({
+    req(rv_456$nf_df)
+    tab <- prop.table(table(rv_456$nf_df$N, rv_456$nf_df$F))
+    marg_N <- margin.table(tab, 1)
+    data.frame(N = as.numeric(names(marg_N)), P = round(as.numeric(marg_N), 4))
+  })
+  
+  output$tbl_nf_marg_F <- renderTable({
+    req(rv_456$nf_df)
+    tab <- prop.table(table(rv_456$nf_df$N, rv_456$nf_df$F))
+    marg_F <- margin.table(tab, 2)
+    data.frame(F = as.numeric(names(marg_F)), P = round(as.numeric(marg_F), 4))
+  })
+  
+  output$txt_nf_chi <- renderPrint({
+    req(rv_456$nf_df)
+    tab_freq <- table(rv_456$nf_df$N, rv_456$nf_df$F)
+    chisq.test(tab_freq, simulate.p.value = TRUE, B = 2000)
+  })
+  
+  output$plot_nf_heat_mosaic <- renderPlot({
+    req(rv_456$nf_df)
+    tab <- prop.table(table(rv_456$nf_df$N, rv_456$nf_df$F))
+    prob_mat <- as.matrix(tab)
+    x_vals <- as.numeric(rownames(prob_mat))  # N
+    y_vals <- as.numeric(colnames(prob_mat))  # F
+    
+    oldpar <- par(no.readonly = TRUE)
+    on.exit(par(oldpar), add = TRUE)
+    par(mfrow = c(1, 2))
+    
+    image(
+      x = x_vals, y = y_vals, z = prob_mat,
+      xlab = "N (nr. incercari)", ylab = "F (nr. esecuri)",
+      main = "Heatmap: P(N,F) (empiric)",
+      axes = FALSE
+    )
+    
+    axis(1, at = x_vals, labels = x_vals)
+    axis(2, at = y_vals, labels = y_vals)
+    
+    mosaicplot(
+      table(rv_456$nf_df$N, rv_456$nf_df$F),
+      main = "Mosaicplot: frecvente (N, F)",
+      xlab = "N", ylab = "F"
+    )
+  })
+  
+  # --- LOGICA (N, T) (Ex 5) ---
+  observeEvent(input$btn_sim_nt, {
+    rv_456$nt_df <- simuleaza_NT_din_ex3(
+      M = input$nt_M,
+      n_max = input$nt_n_max,
+      p_succes = input$nt_p_succes,
+      t_0 = input$nt_t0,
+      medie_S = input$nt_medie_s,
+      backoff_fix = input$nt_backoff
+    )
+  })
+  
+  output$plot_nt_scatter <- renderPlot({
+    req(rv_456$nt_df)
+    
+    plot(
+      rv_456$nt_df$N, rv_456$nt_df$T,
+      xlab = "N (numar incercari)", ylab = "T (timp total)",
+      main = "Scatterplot: (N, T)",
+      pch = 16, cex = 0.4
+    )
+    abline(lm(T ~ N, data = rv_456$nt_df), lwd = 2)
+  })
+  
+  output$tbl_nt_stats <- renderTable({
+    req(rv_456$nt_df)
+    df <- rv_456$nt_df
+    data.frame(
+      Statistica = c("E[N]", "E[T]", "Var(N)", "Var(T)", "Cov(N,T)", "Corr(N,T)"),
+      Valoare = c(
+        mean(df$N),
+        mean(df$T),
+        var(df$N),
+        var(df$T),
+        cov(df$N, df$T),
+        cor(df$N, df$T)
+      )
+    )
+  })
+  
+  output$txt_nt_interp <- renderText({
+    req(rv_456$nt_df)
+    paste0(
+      "Interpretare:\n",
+      "De regula corelatia este POZITIVA: daca avem mai multe retry-uri (N creste),\n",
+      "timpul total T creste (se aduna mai multe S_i si eventual backoff-uri)."
+    )
+  })
+  
+  # --- LOGICA CONDITIONARI (Ex 6) ---
+  observeEvent(input$btn_sim_cond, {
+    rv_456$cond_df <- simuleaza_date_din_ex3(
+      M = input$cond_M,
+      n_max = input$cond_n_max,
+      p_succes = input$cond_p_succes,
+      t_0 = input$cond_t0,
+      medie_S = input$cond_medie_s,
+      backoff_fix = input$cond_backoff
+    )
+  })
+  
+  output$tbl_cond_probs <- renderTable({
+    req(rv_456$cond_df)
+    df <- rv_456$cond_df
+    n0 <- input$cond_n0
+    t0 <- input$cond_t0
+    
+    A <- (df$I == 1L)
+    B <- (df$T <= t0)
+    C <- (df$N <= n0)
+    
+    data.frame(
+      Probabilitate = c(
+        paste0("P(A | N <= ", n0, ")"),
+        "P(B | A) = P(T <= t0 | I=1)"
+      ),
+      Valoare = c(
+        mean(A[C]),
+        mean(B[A])
+      )
+    )
+  })
+  
+  output$tbl_cond_expect <- renderTable({
+    req(rv_456$cond_df)
+    df <- rv_456$cond_df
+    
+    data.frame(
+      Cantitate = c("E(T | I = 1) [Succes]", "E(T | I = 0) [Eșec final]"),
+      Valoare = c(
+        mean(df$T[df$I == 1L]),
+        mean(df$T[df$I == 0L])
+      )
+    )
+  })
+  
+  output$plot_cond_box <- renderPlot({
+    req(rv_456$cond_df)
+    df <- rv_456$cond_df
+    
+    boxplot(
+      T ~ I, data = df,
+      names = c("Eșec (I=0)", "Succes (I=1)"),
+      main = "Distribuția lui T condiționat de I",
+      ylab = "T (timp total)"
+    )
+  })
+  
+  output$txt_cond_interp <- renderText({
+    req(rv_456$cond_df)
+    n0 <- input$cond_n0
+    paste0(
+      "Interpretare:\n",
+      "- P(I=1 | N <= ", n0, ") masoara cat de des reusim rapid (cu putine retry-uri).\n",
+      "- P(T <= t0 | I=1) masoara cat de des respectam SLA conditionat de succes.\n",
+      "- In general E(T | I=0) tinde sa fie mai mare, deoarece cererile esuate consuma toate incercarile\n",
+      "  si acumuleaza timpi de raspuns + backoff-uri."
     )
   })
   
